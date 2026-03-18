@@ -132,7 +132,7 @@
 import { ref } from 'vue'
 
 const isMainRanking = ref(true)
-const RANK_SIZE = 20
+const RANK_SIZE = 50
 
 function switchToMain() {
   isMainRanking.value = true
