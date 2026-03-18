@@ -25,29 +25,8 @@
     </div>
 
     <div class="leaderboard-content" :class="{ 'is-sub': !isMainRanking }">
-      <!-- 主频道：本周新榜 + 创意精选 -->
+      <!-- 主频道：创意精选（左）+ 本周新榜（右） -->
       <template v-if="isMainRanking">
-        <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">本周新榜</h3>
-          <div
-            v-for="(item, index) in leftmostData"
-            :key="'leftmost-' + item.id"
-            class="weibo-rank-item"
-            v-motion
-            :initial="{ opacity: 0, y: 10 }"
-            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
-          >
-            <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
-            <div class="weibo-rank-content">
-              <span class="weibo-rank-title">{{ item.title }}</span>
-              <div class="weibo-rank-meta">
-                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
-                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">创意精选</h3>
           <div
@@ -56,7 +35,7 @@
             class="leaderboard-item"
             v-motion
             :initial="{ opacity: 0, y: 20 }"
-            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
+            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
               <p class="item-title">{{ item.title }}</p>
@@ -73,19 +52,16 @@
             </div>
           </div>
         </div>
-      </template>
 
-      <!-- 副频道：热门推荐 + 技能提升（热门推荐在左，技能提升在右） -->
-      <template v-else>
         <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">热门推荐</h3>
+          <h3 class="column-title">本周新榜</h3>
           <div
-            v-for="(item, index) in rightmostData"
-            :key="'rightmost-' + item.id"
+            v-for="(item, index) in leftmostData"
+            :key="'leftmost-' + item.id"
             class="weibo-rank-item"
             v-motion
             :initial="{ opacity: 0, y: 10 }"
-            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
+            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
           >
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
@@ -97,7 +73,10 @@
             </div>
           </div>
         </div>
+      </template>
 
+      <!-- 副频道：技能提升（左）+ 热门推荐（右） -->
+      <template v-else>
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">技能提升</h3>
           <div
@@ -106,7 +85,7 @@
             class="leaderboard-item"
             v-motion
             :initial="{ opacity: 0, y: 20 }"
-            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
+            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
               <p class="item-title">{{ item.title }}</p>
@@ -120,6 +99,27 @@
             <div class="item-meta">
               <span class="item-rank" :class="{ 'rank-top': item.id <= 3 }">#{{ item.id }}</span>
               <span class="item-views">{{ item.views }} 播放</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-column leaderboard-col weibo-column">
+          <h3 class="column-title">热门推荐</h3>
+          <div
+            v-for="(item, index) in rightmostData"
+            :key="'rightmost-' + item.id"
+            class="weibo-rank-item"
+            v-motion
+            :initial="{ opacity: 0, y: 10 }"
+            :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
+          >
+            <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
+            <div class="weibo-rank-content">
+              <span class="weibo-rank-title">{{ item.title }}</span>
+              <div class="weibo-rank-meta">
+                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
+                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -281,7 +281,7 @@ const rightmostData = ref([
   max-width: 1400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1.6fr;
+  grid-template-columns: 2.2fr 0.7fr;
   gap: 20px;
   align-items: start;
 }
@@ -479,7 +479,7 @@ const rightmostData = ref([
 /* 响应式 */
 @media (max-width: 1200px) {
   .leaderboard-content {
-    grid-template-columns: 1fr 1.3fr;
+    grid-template-columns: 1.6fr 0.8fr;
   }
 }
 
