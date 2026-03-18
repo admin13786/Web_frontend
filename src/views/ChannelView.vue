@@ -132,6 +132,7 @@
 import { ref } from 'vue'
 
 const isMainRanking = ref(true)
+const RANK_SIZE = 20
 
 function switchToMain() {
   isMainRanking.value = true
@@ -139,6 +140,32 @@ function switchToMain() {
 
 function switchToSub() {
   isMainRanking.value = false
+}
+
+function padVideoList(listRef, options) {
+  while (listRef.value.length < RANK_SIZE) {
+    const id = listRef.value.length + 1
+    const views = Math.max(12, Math.round((options.baseViewsWan - (id - 1) * options.stepWan) * 10) / 10)
+    listRef.value.push({
+      id,
+      title: `【${options.series}】第 ${id} 期：${options.topic}（进阶技巧与案例拆解）`,
+      views: `${views}万`
+    })
+  }
+}
+
+function padWeiboList(listRef, options) {
+  while (listRef.value.length < RANK_SIZE) {
+    const id = listRef.value.length + 1
+    const viewsNum = Math.max(100000, Math.round(options.baseViews - (id - 1) * options.stepViews))
+    const tag = id <= 3 ? '热' : id % 5 === 0 ? '新' : ''
+    listRef.value.push({
+      id,
+      title: `【${options.series}】TOP${id}：${options.topic}（本周趋势速览）`,
+      viewsNum: String(viewsNum),
+      tag
+    })
+  }
 }
 
 const leftmostData = ref([
@@ -192,6 +219,11 @@ const rightmostData = ref([
   { id: 9, title: '手工 DIY：低成本改造出租屋。', viewsNum: '225634', tag: '' },
   { id: 10, title: '极简生活：断舍离与 minimalist 生活方式。', viewsNum: '198456', tag: '' }
 ])
+
+padWeiboList(leftmostData, { series: '本周新榜', topic: 'AI / 前端 / 工具', baseViews: 923847, stepViews: 32000 })
+padVideoList(leftData, { series: '创意精选', topic: '创意与设计', baseViewsWan: 128, stepWan: 4.5 })
+padVideoList(rightData, { series: '技能提升', topic: '效率与成长', baseViewsWan: 72, stepWan: 2.2 })
+padWeiboList(rightmostData, { series: '热门推荐', topic: '生活方式', baseViews: 882104, stepViews: 28000 })
 </script>
 
 <style scoped>
