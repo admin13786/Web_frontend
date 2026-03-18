@@ -1,0 +1,244 @@
+<template>
+  <div class="home-page">
+    <div class="home-bg" />
+    
+    <!-- 三卡片循环布局：左、中、右三个槽位，点击卡片触发循环 -->
+    <div class="home-layout">
+      <!-- 左槽位 -->
+      <div
+        class="card slot-left"
+        :class="slotClass(leftCard)"
+        v-motion
+        :initial="{ opacity: 0, x: -30 }"
+        :enter="{ opacity: 1, x: 0, transition: { duration: 0.5, delay: 0.2 } }"
+        @click="rotateOnClick('left')"
+      >
+        <Transition name="card-fade" mode="out-in">
+          <slot-content :key="'left-' + leftCard" :card="leftCard" @navigate="goToChannel" />
+        </Transition>
+      </div>
+
+      <!-- 中槽位（突出显示） -->
+      <div
+        class="card slot-center"
+        :class="slotClass(centerCard)"
+        v-motion
+        :initial="{ opacity: 0, y: -20 }"
+        :enter="{ opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.1 } }"
+        @click="rotateOnClick('center')"
+      >
+        <Transition name="card-fade" mode="out-in">
+          <slot-content :key="'center-' + centerCard" :card="centerCard" @navigate="goToChannel" />
+        </Transition>
+      </div>
+
+      <!-- 右槽位 -->
+      <div
+        class="card slot-right"
+        :class="slotClass(rightCard)"
+        v-motion
+        :initial="{ opacity: 0, x: 30 }"
+        :enter="{ opacity: 1, x: 0, transition: { duration: 0.5, delay: 0.3 } }"
+        @click="rotateOnClick('right')"
+      >
+        <Transition name="card-fade" mode="out-in">
+          <slot-content :key="'right-' + rightCard" :card="rightCard" @navigate="goToChannel" />
+        </Transition>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import SlotContent from '../components/HomeSlotContent.vue'
+
+const router = useRouter()
+
+// 顺序 [左, 中, 右]，初始：Channel左, Workshop中, Remain右
+const order = ref(['channel', 'workshop', 'remain'])
+const isAnimating = ref(false)
+const ROTATE_DELAY = 60
+const TRANSITION_DURATION = 320
+
+const leftCard = computed(() => order.value[0])
+const centerCard = computed(() => order.value[1])
+const rightCard = computed(() => order.value[2])
+
+function slotClass(card) {
+  return {
+    'is-channel': card === 'channel',
+    'is-workshop': card === 'workshop',
+    'is-remain': card === 'remain'
+  }
+}
+
+function rotateOnClick(slot) {
+  if (isAnimating.value) return
+  isAnimating.value = true
+  
+  const [left, center, right] = order.value
+  let newOrder
+  // 点击左：左→中，中→右，右→左 => 新[右,左,中]
+  if (slot === 'left') {
+    newOrder = [right, left, center]
+  // 点击中：中→左，左→右，右→中 => 新[中,右,左]
+  } else if (slot === 'center') {
+    newOrder = [center, right, left]
+  // 点击右：右→中，中→左，左→右 => 新[中,右,左]
+  } else {
+    newOrder = [center, right, left]
+  }
+  
+  setTimeout(() => {
+    order.value = newOrder
+    setTimeout(() => { isAnimating.value = false }, TRANSITION_DURATION)
+  }, ROTATE_DELAY)
+}
+
+function goToChannel() {
+  router.push('/channel')
+}
+</script>
+
+<style scoped>
+.home-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  position: relative;
+}
+
+.home-bg {
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99, 102, 241, 0.08), transparent 60%);
+  pointer-events: none;
+}
+
+.home-layout {
+  position: relative;
+  width: 100%;
+  max-width: 1000px;
+  min-height: 480px;
+  height: 55vh;
+}
+
+/* 三个固定槽位：位置大小不变 */
+/* 内容切换淡入淡出 - 流畅过渡 */
+.card-fade-enter-active {
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-fade-leave-active {
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-fade-enter-from,
+.card-fade-leave-to {
+  opacity: 0;
+}
+.card-fade-enter-to,
+.card-fade-leave-from {
+  opacity: 1;
+}
+
+.slot-left {
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 28%;
+  min-width: 180px;
+  z-index: 1;
+}
+
+.slot-center {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin-left: auto;
+  margin-right: auto;
+  width: 44%;
+  z-index: 2;
+}
+
+.slot-right {
+  position: absolute;
+  right: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 28%;
+  min-width: 180px;
+  z-index: 1;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  padding: 32px;
+  cursor: pointer;
+  transition: box-shadow var(--transition-smooth), background var(--transition-smooth), transform var(--transition-smooth);
+}
+
+.card:hover {
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-hover);
+  transform: scale(1.02);
+}
+
+.is-channel:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: scale(1.03);
+}
+
+.card-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.card-desc {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .home-layout {
+    height: auto;
+    min-height: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .slot-left,
+  .slot-center,
+  .slot-right {
+    position: relative;
+    width: 100%;
+    min-width: unset;
+    height: auto;
+    min-height: 140px;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    right: auto;
+  }
+}
+</style>
