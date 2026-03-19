@@ -22,7 +22,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173
+访问 http://localhost:8000
 
 ## 页面流程
 
