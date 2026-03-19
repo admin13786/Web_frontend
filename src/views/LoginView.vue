@@ -31,7 +31,8 @@
             required
           />
         </div>
-        <button type="submit" class="login-btn">登录</button>
+        <p v-if="errorMsg" class="login-error">{{ errorMsg }}</p>
+        <button type="submit" class="login-btn" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
       </form>
     </div>
   </div>
@@ -40,15 +41,32 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { login } from '../api/auth.js'
 
 const router = useRouter()
 const username = ref('')
 const password = ref('')
+const loading = ref(false)
+const errorMsg = ref('')
 
-function handleLogin() {
-  // 演示用：任意输入即可登录
-  localStorage.setItem('isLoggedIn', 'true')
-  router.push('/home')
+async function handleLogin() {
+  errorMsg.value = ''
+  if (!username.value.trim() || !password.value) return
+  loading.value = true
+  try {
+    const res = await login({ username: username.value.trim(), password: password.value })
+    if (res.success && res.token) {
+      localStorage.setItem('isLoggedIn', 'true')
+      localStorage.setItem('token', res.token)
+      router.push('/home')
+    } else {
+      errorMsg.value = res.message || '登录失败'
+    }
+  } catch (e) {
+    errorMsg.value = e.message || '网络错误，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -156,5 +174,18 @@ function handleLogin() {
 
 .login-btn:active {
   transform: translateY(0);
+}
+
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.login-error {
+  margin: 0;
+  padding: 10px 0;
+  font-size: 0.9rem;
+  color: var(--accent);
 }
 </style>
