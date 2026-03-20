@@ -14,7 +14,7 @@
         @click="rotateOnClick('left')"
       >
         <Transition name="card-fade" mode="out-in">
-          <slot-content :key="'left-' + leftCard" :card="leftCard" @navigate="goToChannel" />
+          <slot-content :key="'left-' + leftCard" :card="leftCard" @navigate="handleSlotNavigate" />
         </Transition>
       </div>
 
@@ -28,7 +28,7 @@
         @click="rotateOnClick('center')"
       >
         <Transition name="card-fade" mode="out-in">
-          <slot-content :key="'center-' + centerCard" :card="centerCard" @navigate="goToChannel" />
+          <slot-content :key="'center-' + centerCard" :card="centerCard" @navigate="handleSlotNavigate" />
         </Transition>
       </div>
 
@@ -42,7 +42,7 @@
         @click="rotateOnClick('right')"
       >
         <Transition name="card-fade" mode="out-in">
-          <slot-content :key="'right-' + rightCard" :card="rightCard" @navigate="goToChannel" />
+          <slot-content :key="'right-' + rightCard" :card="rightCard" @navigate="handleSlotNavigate" />
         </Transition>
       </div>
     </div>
@@ -53,6 +53,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import SlotContent from '../components/HomeSlotContent.vue'
+import { getOpenMAICAppUrl } from '../config.js'
 
 const router = useRouter()
 
@@ -97,8 +98,19 @@ function rotateOnClick(slot) {
   }, ROTATE_DELAY)
 }
 
-function goToChannel() {
-  router.push('/channel')
+function handleSlotNavigate(card) {
+  if (card === 'channel') {
+    router.push('/channel')
+    return
+  }
+  if (card === 'workshop') {
+    router.push('/workshop')
+    return
+  }
+  if (card === 'remain') {
+    // 直接整页跳转，保证 session history 为「主页 → OpenMAIC」，避免 router+replace 竞态弄丢主页
+    window.location.assign(getOpenMAICAppUrl())
+  }
 }
 </script>
 

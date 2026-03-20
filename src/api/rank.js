@@ -50,7 +50,15 @@ const MOCK_MAIN_VIDEO = padVideoList([
 ], { series: '创意精选', topic: '创意与设计', baseViewsWan: 128, stepWan: 4.5 })
 
 const MOCK_MAIN_WEIBO = padWeiboList([
-  { id: 1, title: 'AI 绘画入门：Stable Diffusion 从零到精通的完整指南。', viewsNum: '923847', tag: '热' },
+  {
+    id: 1,
+    title: 'AI 绘画入门：Stable Diffusion 从零到精通的完整指南。',
+    viewsNum: '923847',
+    tag: '热',
+    newsId: '7879848900-1d5acf3c401902scai',
+    url: 'https://cj.sina.com.cn/articles/view/7879848900/1d5acf3c401902scai?froms=ggmp',
+    source: '新浪财经 · 看点资讯',
+  },
   { id: 2, title: 'ChatGPT 实战：提升工作效率的 50 个提示词技巧。', viewsNum: '785621', tag: '新' },
   { id: 3, title: 'Web3 与元宇宙：区块链技术应用入门解析。', viewsNum: '652341', tag: '' },
   { id: 4, title: 'Midjourney 提示词大全：从入门到出图。', viewsNum: '445237', tag: '新' },

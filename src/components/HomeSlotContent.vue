@@ -3,9 +3,14 @@
     <h2 class="card-title">{{ title }}</h2>
     <p class="card-desc">{{ desc }}</p>
     <span
-      v-if="card === 'channel'"
+      v-if="card === 'channel' || card === 'workshop' || card === 'remain'"
       class="card-arrow"
-      @click.stop="$emit('navigate')"
+      role="button"
+      tabindex="0"
+      :aria-label="arrowAriaLabel"
+      @click.stop="$emit('navigate', card)"
+      @keydown.enter.prevent.stop="$emit('navigate', card)"
+      @keydown.space.prevent.stop="$emit('navigate', card)"
     >→</span>
   </div>
 </template>
@@ -27,6 +32,12 @@ const content = {
 
 const title = computed(() => content[props.card]?.title || '')
 const desc = computed(() => content[props.card]?.desc || '')
+
+const arrowAriaLabel = computed(() => {
+  if (props.card === 'remain') return '进入 OpenMAIC'
+  if (props.card === 'workshop') return '进入工作坊'
+  return '进入频道'
+})
 </script>
 
 <style scoped>

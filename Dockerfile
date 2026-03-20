@@ -12,7 +12,7 @@ COPY . .
 ARG VITE_API_BASE
 ARG VITE_USE_MOCK
 ENV VITE_API_BASE=${VITE_API_BASE}
-ENV VITE_USE_MOCK=${VITE_USE_MOCK:-false}
+ENV VITE_USE_MOCK=${VITE_USE_MOCK:-true}
 RUN npm run build
 
 # 阶段二：用 Nginx 托管静态资源，无需再安装任何“库”
