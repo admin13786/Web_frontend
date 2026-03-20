@@ -149,7 +149,6 @@
 
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
-import { streamGenerate, uploadHTML } from '../api/workshop.js'
 
 // ── Layout / drag ──────────────────────────────────────────────
 const workshopEl = ref(null)
@@ -265,62 +264,68 @@ async function sendMessage() {
   loading.value = true
   scrollBottom()
 
-  // 初始化助手消息，显示生成状态
-  const assistantMsg = {
-    role: 'assistant',
-    segments: [{ kind: 'text', content: '🔄 正在生成 HTML...', open: true }],
-    time: ''
-  }
-  messages.value.push(assistantMsg)
+  messages.value.push({ role: 'assistant', segments: [], time: '' })
+  // 必须通过响应式引用操作，否则 Vue 无法追踪变更
+  const assistantMsg = messages.value[messages.value.length - 1]
 
   try {
-    // 收集生成的完整 HTML
-    let generatedHTML = ''
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
 
-    // 调用新的流式生成接口
-    for await (const chunk of streamGenerate(text, '你是一个HTML生成专家，根据用户需求生成完整的、可直接运行的HTML代码。')) {
-      generatedHTML += chunk
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+      signal: controller.signal
+    })
 
-      // 更新状态显示（可选：显示进度）
-      const lastSeg = assistantMsg.segments[assistantMsg.segments.length - 1]
-      if (lastSeg && lastSeg.kind === 'text') {
-        lastSeg.content = `🔄 正在生成 HTML... (${generatedHTML.length} 字符)`
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const raw = line.slice(6).trim()
+        if (raw === '[DONE]') break
+
+        const msg = JSON.parse(raw)
+
+        if (msg.type === 'result') {
+          previewUrl.value = msg.url
+          previewMode.value = 'url'
+          iframeKey.value++
+        } else if (msg.type === 'text') {
+          const segs = assistantMsg.segments
+          const last = segs[segs.length - 1]
+          if (last && last.kind === 'text') {
+            last.content += msg.content
+          } else {
+            segs.push({ kind: 'text', content: msg.content })
+          }
+        } else if (msg.type === 'card') {
+          assistantMsg.segments.push({
+            kind: 'card', type: msg.cardType,
+            icon: msg.icon, title: msg.title, content: msg.content,
+            open: msg.cardType === 'thinking'
+          })
+        }
+
+        await nextTick()
+        scrollBottom()
       }
-
-      await nextTick()
-      scrollBottom()
     }
-
-    // 生成完成后，上传到 OSS
-    assistantMsg.segments[0].content = '📤 正在上传文件...'
-    await nextTick()
-
-    const fileName = `workshop-${Date.now()}.html`
-    const { url } = await uploadHTML(fileName, generatedHTML)
-
-    // 更新消息显示结果
-    assistantMsg.segments = [
-      { kind: 'text', content: '✅ HTML 生成并上传完成！' },
-      {
-        kind: 'card',
-        type: 'result',
-        icon: '🌐',
-        title: '在线预览',
-        content: url,
-        open: true
-      }
-    ]
-
-    // 右侧预览区显示生成的 URL
-    previewUrl.value = url
-    previewMode.value = 'url'
-    iframeKey.value++
-
+    clearTimeout(timeout)
   } catch (e) {
-    const errorMsg = e.name === 'AbortError'
-      ? '⚠️ 请求超时，请稍后重试'
-      : `⚠️ 请求失败：${e.message}`
-    assistantMsg.segments = [{ kind: 'text', content: errorMsg }]
+    const msg = e.name === 'AbortError' ? '⚠️ 请求超时，请稍后重试' : '⚠️ 请求失败：' + e.message
+    assistantMsg.segments.push({ kind: 'text', content: msg })
   }
 
   assistantMsg.time = nowTime()

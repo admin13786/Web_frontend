@@ -13,6 +13,21 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/openmaic/, ''),
       },
+      // 新增：url-generate 后端代理（须放在通用 /api 之前，避免被抢）
+      '/api/workshop': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/workshop/, ''),
+      },
+      // AI 新闻服务：排行榜 + 登录（与 Crawl/run_local 或 backend run_local 同源）
+      '/api/ranks': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/api/auth': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
     },
   },
 })

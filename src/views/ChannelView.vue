@@ -48,7 +48,14 @@
             <div class="item-content">
               <p class="item-title">{{ item.title }}</p>
               <div class="video-placeholder">
-                <div class="video-cover">
+                <div v-if="item.coverUrl" class="video-cover video-cover--thumb">
+                  <img class="cover-image" :src="item.coverUrl" :alt="item.title" loading="lazy" />
+                  <div class="cover-overlay">
+                    <span class="play-icon">▶</span>
+                    <span class="video-label">视频 {{ item.id }}</span>
+                  </div>
+                </div>
+                <div v-else class="video-cover">
                   <span class="play-icon">▶</span>
                   <span class="video-label">视频 {{ item.id }}</span>
                 </div>
@@ -118,7 +125,14 @@
             <div class="item-content">
               <p class="item-title">{{ item.title }}</p>
               <div class="video-placeholder">
-                <div class="video-cover">
+                <div v-if="item.coverUrl" class="video-cover video-cover--thumb">
+                  <img class="cover-image" :src="item.coverUrl" :alt="item.title" loading="lazy" />
+                  <div class="cover-overlay">
+                    <span class="play-icon">▶</span>
+                    <span class="video-label">视频 {{ item.id }}</span>
+                  </div>
+                </div>
+                <div v-else class="video-cover">
                   <span class="play-icon">▶</span>
                   <span class="video-label">视频 {{ item.id }}</span>
                 </div>
@@ -483,6 +497,46 @@ onMounted(fetchAll)
   justify-content: center;
   gap: 12px;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05));
+}
+
+.video-cover--thumb {
+  position: relative;
+  padding: 0;
+  gap: 0;
+  background: #0f1117;
+  overflow: hidden;
+}
+
+.cover-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cover-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  pointer-events: none;
+}
+
+.video-cover--thumb .play-icon,
+.video-cover--thumb .video-label {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
 }
 
 .play-icon {
