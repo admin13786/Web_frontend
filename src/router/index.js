@@ -18,6 +18,18 @@ const routes = [
     name: 'Channel',
     component: () => import('../views/ChannelView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/workshop',
+    name: 'Workshop',
+    component: () => import('../views/WorkshopView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/news/:newsId',
+    name: 'NewsDetail',
+    component: () => import('../views/NewsDetailView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

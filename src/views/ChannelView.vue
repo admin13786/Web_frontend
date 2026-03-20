@@ -28,6 +28,9 @@
       <p>{{ loadError }}</p>
       <button type="button" class="retry-btn" @click="fetchAll">重试</button>
     </div>
+    <div v-else-if="actionMessage" class="action-message">
+      {{ actionMessage }}
+    </div>
     <div v-else-if="loading" class="load-state">加载中…</div>
     <div v-else class="leaderboard-content" :class="{ 'is-sub': !isMainRanking }">
       <!-- 主频道：创意精选（左）+ 本周新榜（右） -->
@@ -64,6 +67,7 @@
             v-for="(item, index) in leftmostData"
             :key="'leftmost-' + item.id"
             class="weibo-rank-item"
+            @click="openNews(item)"
             v-motion
             :initial="{ opacity: 0, y: 10 }"
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
@@ -75,6 +79,25 @@
                 <span class="weibo-rank-count">{{ item.viewsNum }}</span>
                 <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
               </div>
+            </div>
+            <div class="rank-actions" @click.stop>
+              <button
+                type="button"
+                class="rank-action-btn"
+                :class="{ 'is-favorite': isFavorite(item?.newsId) }"
+                @click="favoriteNews(item)"
+                :disabled="!item?.newsId"
+              >
+                {{ isFavorite(item?.newsId) ? '已收藏' : '收藏' }}
+              </button>
+              <button
+                type="button"
+                class="rank-action-btn rank-action-explain"
+                @click="explainNews(item)"
+                :disabled="explainLoading"
+              >
+                {{ explainLoading ? '生成中…' : '讲解' }}
+              </button>
             </div>
           </div>
         </div>
@@ -114,6 +137,7 @@
             v-for="(item, index) in rightmostData"
             :key="'rightmost-' + item.id"
             class="weibo-rank-item"
+            @click="openNews(item)"
             v-motion
             :initial="{ opacity: 0, y: 10 }"
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
@@ -126,6 +150,25 @@
                 <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
               </div>
             </div>
+            <div class="rank-actions" @click.stop>
+              <button
+                type="button"
+                class="rank-action-btn"
+                :class="{ 'is-favorite': isFavorite(item?.newsId) }"
+                @click="favoriteNews(item)"
+                :disabled="!item?.newsId"
+              >
+                {{ isFavorite(item?.newsId) ? '已收藏' : '收藏' }}
+              </button>
+              <button
+                type="button"
+                class="rank-action-btn rank-action-explain"
+                @click="explainNews(item)"
+                :disabled="explainLoading"
+              >
+                {{ explainLoading ? '生成中…' : '讲解' }}
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -135,7 +178,21 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getRankVideo, getRankWeibo } from '../api/rank.js'
+import { getNewsById } from '../mock/news.js'
+import { addFavorite, isFavorite as isFav } from '../api/favorites.js'
+import { OPENMAIC_BASE_URL, buildOpenMAICDialogPrefillHomeUrl } from '../config.js'
+
+const router = useRouter()
+
+function isFavorite(newsId) {
+  return isFav(newsId)
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
 
 const isMainRanking = ref(true)
 const leftData = ref([])
@@ -144,6 +201,71 @@ const leftmostData = ref([])
 const rightmostData = ref([])
 const loading = ref(true)
 const loadError = ref('')
+const actionMessage = ref('')
+
+function openNews(item) {
+  const newsId = item?.newsId
+  const url = item?.url || (newsId ? getNewsById(newsId)?.url : '')
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  if (!newsId) return
+  router.push(`/news/${encodeURIComponent(newsId)}`)
+}
+
+function favoriteNews(item) {
+  const newsId = item?.newsId
+  if (!newsId) return
+  const news = getNewsById(newsId)
+  if (!news) return
+  addFavorite({
+    newsId: news.newsId,
+    title: news.title,
+    source: news.source,
+    url: news.url,
+    text: news.text,
+  })
+  actionMessage.value = '已加入收藏夹'
+  setTimeout(() => {
+    actionMessage.value = ''
+  }, 1800)
+}
+
+const explainLoading = ref(false)
+const explainError = ref('')
+const classroomUrl = ref('')
+
+async function explainNews(item) {
+  const title = item?.title
+  if (!title) return
+
+  const baseUrl = OPENMAIC_BASE_URL.trim() || 'http://localhost:3000'
+  if (!OPENMAIC_BASE_URL.trim()) {
+    console.warn(
+      '[OpenMAIC] VITE_OPENMAIC_BASE_URL 未配置，讲解跳转使用 http://localhost:3000；请在 .env 中配置',
+    )
+  }
+
+  explainLoading.value = true
+  explainError.value = ''
+  classroomUrl.value = ''
+  actionMessage.value = `正在通过 OpenMAIC 预填讲解「${title}」…`
+
+  try {
+    const url = buildOpenMAICDialogPrefillHomeUrl(baseUrl, title)
+    await sleep(200)
+    window.location.href = url
+  } catch (e) {
+    explainError.value = e instanceof Error ? e.message : String(e)
+    actionMessage.value = `跳转失败：${explainError.value}`
+    setTimeout(() => {
+      actionMessage.value = ''
+    }, 5000)
+  } finally {
+    explainLoading.value = false
+  }
+}
 
 function switchToMain() {
   isMainRanking.value = true
@@ -414,10 +536,64 @@ onMounted(fetchAll)
   border: 1px solid var(--bg-glass-border);
   border-radius: var(--radius-lg);
   transition: background var(--transition-fast);
+  cursor: pointer;
 }
 
 .weibo-rank-item:hover {
   background: var(--bg-card-hover);
+}
+
+.rank-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+.rank-action-btn {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--bg-glass-border);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.rank-action-btn:hover {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.35);
+  transform: translateY(-1px);
+}
+
+.rank-action-btn.is-favorite {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.6);
+  color: var(--text-primary);
+}
+
+.rank-action-explain {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-primary);
+}
+
+.rank-action-explain:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.action-message {
+  max-width: 1400px;
+  margin: 0 auto 24px;
+  padding: 12px 16px;
+  text-align: center;
+  color: var(--text-primary);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-lg);
+  background: rgba(99, 102, 241, 0.1);
 }
 
 .weibo-rank-num {
