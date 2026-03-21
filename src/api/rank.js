@@ -4,10 +4,12 @@ import { USE_MOCK } from '../config.js'
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const RANK_SIZE = 60
+/** 视频榜 mock 条数（创意精选 / 技能提升）；微博榜仍为 RANK_SIZE */
+const VIDEO_RANK_SIZE = 5
 
-function padVideoList(list, options) {
+function padVideoList(list, options, targetSize = RANK_SIZE) {
   const out = [...list]
-  while (out.length < RANK_SIZE) {
+  while (out.length < targetSize) {
     const id = out.length + 1
     const views = Math.max(12, Math.round((options.baseViewsWan - (id - 1) * options.stepWan) * 10) / 10)
     out.push({
@@ -36,18 +38,42 @@ function padWeiboList(list, options) {
 }
 
 // ---------- Mock 数据（与文档中的响应格式一致，每条榜 RANK_SIZE 条）--------------
-const MOCK_MAIN_VIDEO = padVideoList([
-  { id: 1, title: '【精选】年度最佳创意短片合集，带你领略视觉艺术的边界与可能。', views: '128万' },
-  { id: 2, title: '深度解析：从零到一的品牌设计思维，设计师必看的实战案例分享。', views: '96万' },
-  { id: 3, title: '前端架构演进之路：Vue 3 + Vite 构建高性能应用的完整实践。', views: '84万' },
-  { id: 4, title: '创意摄影技巧：手机也能拍出电影感大片。', views: '72万' },
-  { id: 5, title: '动画制作入门：After Effects 从零到出片。', views: '65万' },
-  { id: 6, title: '品牌视觉设计：Logo 与 VI 系统完整指南。', views: '58万' },
-  { id: 7, title: '短视频脚本写作：爆款内容的底层逻辑。', views: '52万' },
-  { id: 8, title: '3D 建模入门：Blender 零基础到独立创作。', views: '46万' },
-  { id: 9, title: '插画风格探索：从扁平到赛博朋克的视觉语言。', views: '41万' },
-  { id: 10, title: '动态海报设计：Motion Graphics 实战教程。', views: '38万' },
-], { series: '创意精选', topic: '创意与设计', baseViewsWan: 128, stepWan: 4.5 })
+const MOCK_MAIN_VIDEO = padVideoList(
+  [
+    {
+      id: 1,
+      title: '【精选】年度最佳创意短片合集，带你领略视觉艺术的边界与可能。',
+      views: '128万',
+      coverUrl: '/channel-covers/creative-rank-1.png',
+    },
+    {
+      id: 2,
+      title: '深度解析：从零到一的品牌设计思维，设计师必看的实战案例分享。',
+      views: '96万',
+      coverUrl: '/channel-covers/creative-rank-2.png',
+    },
+    {
+      id: 3,
+      title: '前端架构演进之路：Vue 3 + Vite 构建高性能应用的完整实践。',
+      views: '84万',
+      coverUrl: '/channel-covers/creative-rank-3.png',
+    },
+    {
+      id: 4,
+      title: '创意摄影技巧：手机也能拍出电影感大片。',
+      views: '72万',
+      coverUrl: '/channel-covers/creative-rank-4.png',
+    },
+    {
+      id: 5,
+      title: '动画制作入门：After Effects 从零到出片。',
+      views: '65万',
+      coverUrl: '/channel-covers/creative-rank-5.png',
+    },
+  ],
+  { series: '创意精选', topic: '创意与设计', baseViewsWan: 128, stepWan: 4.5 },
+  VIDEO_RANK_SIZE,
+)
 
 const MOCK_MAIN_WEIBO = padWeiboList([
   {
@@ -70,18 +96,42 @@ const MOCK_MAIN_WEIBO = padWeiboList([
   { id: 10, title: 'Rust 编程入门：系统级语言从零到精通。', viewsNum: '156234', tag: '' },
 ], { series: '本周新榜', topic: 'AI / 前端 / 工具', baseViews: 923847, stepViews: 32000 })
 
-const MOCK_SUB_VIDEO = padVideoList([
-  { id: 1, title: '音乐制作入门：如何在 30 天内掌握基础混音与编曲技巧。', views: '72万' },
-  { id: 2, title: '摄影后期调色教程：打造电影感画面的 Lightroom 预设分享。', views: '58万' },
-  { id: 3, title: '产品经理的日常：从需求分析到原型设计的完整工作流。', views: '45万' },
-  { id: 4, title: 'Excel 进阶：数据透视表与 Power Query 实战。', views: '42万' },
-  { id: 5, title: 'PPT 设计进阶：从模板到原创的视觉表达。', views: '38万' },
-  { id: 6, title: '写作技巧提升：从零开始写出爆款文章。', views: '35万' },
-  { id: 7, title: '英语口语速成：职场沟通必备表达。', views: '32万' },
-  { id: 8, title: '项目管理入门：敏捷开发与 Scrum 实践。', views: '28万' },
-  { id: 9, title: '逻辑思维训练：结构化表达与批判性思考。', views: '25万' },
-  { id: 10, title: '时间管理法则：GTD 与番茄工作法实战。', views: '22万' },
-], { series: '技能提升', topic: '效率与成长', baseViewsWan: 72, stepWan: 2.2 })
+const MOCK_SUB_VIDEO = padVideoList(
+  [
+    {
+      id: 1,
+      title: '音乐制作入门：如何在 30 天内掌握基础混音与编曲技巧。',
+      views: '72万',
+      coverUrl: '/channel-covers/skill-rank-1.png',
+    },
+    {
+      id: 2,
+      title: '摄影后期调色教程：打造电影感画面的 Lightroom 预设分享。',
+      views: '58万',
+      coverUrl: '/channel-covers/skill-rank-2.png',
+    },
+    {
+      id: 3,
+      title: '产品经理的日常：从需求分析到原型设计的完整工作流。',
+      views: '45万',
+      coverUrl: '/channel-covers/skill-rank-3.png',
+    },
+    {
+      id: 4,
+      title: 'Excel 进阶：数据透视表与 Power Query 实战。',
+      views: '42万',
+      coverUrl: '/channel-covers/skill-rank-4.png',
+    },
+    {
+      id: 5,
+      title: 'PPT 设计进阶：从模板到原创的视觉表达。',
+      views: '38万',
+      coverUrl: '/channel-covers/skill-rank-5.png',
+    },
+  ],
+  { series: '技能提升', topic: '效率与成长', baseViewsWan: 72, stepWan: 2.2 },
+  VIDEO_RANK_SIZE,
+)
 
 const MOCK_SUB_WEIBO = padWeiboList([
   { id: 1, title: '生活 Vlog 剪辑：手机剪映从入门到出片的完整流程。', viewsNum: '882104', tag: '热' },
@@ -106,19 +156,16 @@ async function mockGet(path) {
 }
 
 /**
- * 获取排行榜 - 视频榜
- * @param {'main'|'sub'} board - main=频道排行榜(创意精选/技能提升)，sub=副频道排行榜
- * @returns {Promise<{ list: Array<{ id: number, title: string, views: string }> }>}
+ * 获取排行榜 - 视频榜（创意精选 / 技能提升）
+ * 始终使用本地 Mock：后端暂无真实视频榜数据，仅微博榜接 Crawl 服务。
+ * @param {'main'|'sub'} board - main=创意精选，sub=技能提升（副榜视频列）
+ * @returns {Promise<{ list: Array<{ id: number, title: string, views: string, coverUrl?: string }> }>}
  */
 export async function getRankVideo(board) {
   const path = `/api/ranks/${board}/video`
-  if (USE_MOCK) {
-    const res = await mockGet(path)
-    return res.data?.list ? { list: res.data.list } : Promise.reject(new Error('mock 数据异常'))
-  }
-  const { ok, data } = await request(path)
-  if (!ok || !data?.list) throw new Error(data?.message || '获取榜单失败')
-  return data
+  const res = await mockGet(path)
+  if (!res.data?.list) return Promise.reject(new Error('mock 数据异常'))
+  return { list: res.data.list }
 }
 
 /**
