@@ -33,13 +33,6 @@
             <!-- assistant：流式阶段绑定顶层 ref，避免嵌套对象不触发视图更新 -->
             <template v-else>
               <template v-if="msg.streamingLive">
-                <div v-if="streamingFriendly" class="agent-friendly">
-                  <MarkdownView :content="streamingFriendly" mode="dark" />
-                </div>
-                <WorkshopStreamProgress
-                  v-if="streamingFriendly && !streamingHtml"
-                  :phase="1"
-                />
                 <template v-if="streamingHtml">
                   <WorkshopStreamProgress
                     :phase="2"
@@ -346,6 +339,36 @@ function renderEscapedSource(text) {
     .replace(/\n/g, '<br>')
 }
 
+// ── HTML 输出兜底清洗：避免说明文字/代码围栏混入部署文件 ───────
+function normalizeGeneratedHtml(raw) {
+  if (!raw) return ''
+  let s = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .trim()
+
+  // 兼容模型误输出 markdown 围栏
+  s = s.replace(/^```(?:html)?\s*/i, '')
+  s = s.replace(/\s*```$/i, '')
+
+  // 优先从 doctype 起截取；否则从 <html 起截取
+  const lower = s.toLowerCase()
+  const docIdx = lower.indexOf('<!doctype html')
+  const htmlIdx = lower.indexOf('<html')
+  let start = -1
+  if (docIdx !== -1) start = docIdx
+  else if (htmlIdx !== -1) start = htmlIdx
+  if (start > 0) s = s.slice(start)
+
+  // 若存在 </html>，截断其后的噪声文本
+  const endHtml = s.toLowerCase().lastIndexOf('</html>')
+  if (endHtml !== -1) {
+    s = s.slice(0, endHtml + '</html>'.length)
+  }
+
+  return s.trim()
+}
+
 // ── Send message ───────────────────────────────────────────────
 async function sendMessage() {
   const text = inputText.value.trim()
@@ -377,6 +400,7 @@ async function sendMessage() {
   loading.value = false
 
   let generatedHTML = ''
+  let cleanedHTML = ''
   try {
     for await (const part of streamGenerate(
       text,
@@ -394,7 +418,8 @@ async function sendMessage() {
     }
 
     const friendlyText = streamingFriendly.value.trim()
-    const htmlText = generatedHTML.trim()
+    cleanedHTML = normalizeGeneratedHtml(generatedHTML)
+    const htmlText = cleanedHTML.trim()
 
     if (!htmlText) {
       assistantMsg.streamingLive = false
@@ -418,19 +443,17 @@ async function sendMessage() {
       // 生成完成后，上传到 OSS
       loading.value = true
       assistantMsg.segments = [
-        { kind: 'text', content: friendlyText || '（模型未返回说明文字）' },
-        { kind: 'text', content: '\n\n📤 正在上传文件…' },
+        { kind: 'text', content: '📤 正在上传文件…' },
       ]
       await nextTick()
       scrollBottom()
 
       const fileName = `workshop-${Date.now()}.html`
-      const { url } = await uploadHTML(fileName, generatedHTML)
+      const { url } = await uploadHTML(fileName, cleanedHTML)
 
       // 更新消息：说明 + 完成提示 + 预览卡片 + 窄列展示的 HTML 源码
       assistantMsg.segments = [
-        { kind: 'text', content: friendlyText || '页面已生成。' },
-        { kind: 'text', content: '\n\n✅ **已完成** 已上传，可在右侧预览或新标签打开。' },
+        { kind: 'text', content: '✅ **已完成** 已上传，可在右侧预览或新标签打开。' },
         {
           kind: 'card',
           type: 'result',
@@ -439,7 +462,7 @@ async function sendMessage() {
           content: url,
           open: true,
         },
-        { kind: 'html_source', content: generatedHTML },
+        { kind: 'html_source', content: cleanedHTML },
       ]
 
       // 右侧仅在全部生成并上传成功后首次用 URL 加载（流式过程中不刷新 iframe）
@@ -456,10 +479,10 @@ async function sendMessage() {
       ? '⚠️ 请求超时，请稍后重试'
       : `⚠️ 请求失败：${e.message}`
     const segs = [{ kind: 'text', content: errorMsg }]
-    if (generatedHTML.trim()) {
-      segs.push({ kind: 'html_source', content: generatedHTML.trim() })
+    if (cleanedHTML?.trim()) {
+      segs.push({ kind: 'html_source', content: cleanedHTML.trim() })
       // 上传失败等：用本地 HTML 一次性展示在右侧
-      flushPreviewImmediate(generatedHTML.trim())
+      flushPreviewImmediate(cleanedHTML.trim())
     }
     assistantMsg.segments = segs
   } finally {
