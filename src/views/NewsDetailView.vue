@@ -130,7 +130,8 @@ async function runExplain() {
     }
 
     const jobId = createJson.jobId
-    const pollUrl = createJson.pollUrl || `${openmaicBaseUrl}/api/generate-classroom/${jobId}`
+    // 始终使用相对路径通过 Nginx 代理访问，确保路径正确
+    const pollUrl = `${openmaicBaseUrl}/api/generate-classroom/${jobId}`
     let intervalMs = createJson.pollIntervalMs ?? 5000
     intervalMs = Math.max(2000, Math.min(8000, Number(intervalMs)))
 
