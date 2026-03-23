@@ -57,7 +57,7 @@ import { getOpenMAICAppUrl } from '../config.js'
 
 const router = useRouter()
 
-// 顺序 [左, 中, 右]，初始：Channel左, Workshop中, Remain右
+// 顺序 [左, 中, 右]，初始：Channel左, Workshop中, OpenMAIC右
 const order = ref(['channel', 'workshop', 'remain'])
 const isAnimating = ref(false)
 const ROTATE_DELAY = 60

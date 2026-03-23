@@ -58,7 +58,7 @@ async function handleLogin() {
     if (res.success && res.token) {
       localStorage.setItem('isLoggedIn', 'true')
       localStorage.setItem('token', res.token)
-      router.push('/home')
+      router.push('/')
     } else {
       errorMsg.value = res.message || '登录失败'
     }

@@ -1,7 +1,7 @@
 <template>
   <div class="channel-page">
     <div class="channel-header">
-      <router-link to="/home" class="back-link">← 返回主页</router-link>
+      <router-link to="/" class="back-link">← 返回主页</router-link>
       <div class="title-group">
         <!-- 主榜在左时：频道排行榜大、副频道排行榜小（右下角） -->
         <template v-if="isMainRanking">

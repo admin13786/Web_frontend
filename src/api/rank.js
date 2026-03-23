@@ -1,5 +1,5 @@
 import { request } from './client.js'
-import { USE_MOCK } from '../config.js'
+import { USE_RANK_VIDEO_MOCK, USE_RANK_WEIBO_MOCK } from '../config.js'
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -157,15 +157,18 @@ async function mockGet(path) {
 
 /**
  * 获取排行榜 - 视频榜（创意精选 / 技能提升）
- * 始终使用本地 Mock：后端暂无真实视频榜数据，仅微博榜接 Crawl 服务。
  * @param {'main'|'sub'} board - main=创意精选，sub=技能提升（副榜视频列）
  * @returns {Promise<{ list: Array<{ id: number, title: string, views: string, coverUrl?: string }> }>}
  */
 export async function getRankVideo(board) {
   const path = `/api/ranks/${board}/video`
-  const res = await mockGet(path)
-  if (!res.data?.list) return Promise.reject(new Error('mock 数据异常'))
-  return { list: res.data.list }
+  if (USE_RANK_VIDEO_MOCK) {
+    const res = await mockGet(path)
+    return res.data?.list ? { list: res.data.list } : Promise.reject(new Error('mock 数据异常'))
+  }
+  const { ok, data } = await request(path)
+  if (!ok || !data?.list) throw new Error(data?.message || '获取榜单失败')
+  return data
 }
 
 /**
@@ -175,7 +178,7 @@ export async function getRankVideo(board) {
  */
 export async function getRankWeibo(board) {
   const path = `/api/ranks/${board}/weibo`
-  if (USE_MOCK) {
+  if (USE_RANK_WEIBO_MOCK) {
     const res = await mockGet(path)
     return res.data?.list ? { list: res.data.list } : Promise.reject(new Error('mock 数据异常'))
   }

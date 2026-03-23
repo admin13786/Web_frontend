@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <RouterView v-slot="{ Component, route }">
-      <Transition name="slide" mode="out-in">
+      <Transition name="slide">
         <component :is="Component" :key="route.path" />
       </Transition>
     </RouterView>

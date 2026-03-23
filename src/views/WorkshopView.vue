@@ -18,7 +18,7 @@
         <div v-if="messages.length === 0" class="empty-hint">
           <p>发送消息开始与 Agent 对话</p>
         </div>
-        <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">
+        <div v-for="(msg, i) in messages" :key="msg.key" class="message" :class="msg.role">
           <div class="msg-avatar">
             <span v-if="msg.role === 'user'">U</span>
             <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6a1 1 0 0 0-1 1v5a1 1 0 0 0 .293.707l3 3a1 1 0 0 0 1.414-1.414L13 11.586V7a1 1 0 0 0-1-1z"/></svg>
@@ -26,23 +26,72 @@
           <div class="msg-body">
             <!-- user -->
             <template v-if="msg.role === 'user'">
-              <div class="user-bubble" v-html="renderMarkdown(msg.content)"></div>
+              <div class="user-bubble user-bubble--md">
+                <MarkdownView :content="msg.content" mode="dark" />
+              </div>
             </template>
-            <!-- assistant: segments 混排 -->
+            <!-- assistant：流式阶段绑定顶层 ref，避免嵌套对象不触发视图更新 -->
             <template v-else>
-              <template v-for="(seg, si) in msg.segments" :key="si">
-                <div v-if="seg.kind === 'text'" class="agent-text" v-html="renderMarkdown(seg.content)"></div>
-                <div v-else class="agent-card" :class="'card-' + seg.type">
-                  <div class="agent-card-header" @click="seg.open = !seg.open">
-                    <span class="card-icon">{{ seg.icon }}</span>
-                    <span class="card-title-text">{{ seg.title }}</span>
-                    <svg class="chevron" :class="{ open: seg.open }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-                  </div>
-                  <div v-if="seg.open" class="agent-card-body">
-                    <pre v-if="seg.type === 'bash'" class="bash-block"><code>{{ seg.content }}</code></pre>
-                    <div v-else v-html="renderMarkdown(seg.content)"></div>
-                  </div>
+              <template v-if="msg.streamingLive">
+                <div v-if="streamingFriendly" class="agent-friendly">
+                  <MarkdownView :content="streamingFriendly" mode="dark" />
                 </div>
+                <WorkshopStreamProgress
+                  v-if="streamingFriendly && !streamingHtml"
+                  :phase="1"
+                />
+                <template v-if="streamingHtml">
+                  <WorkshopStreamProgress
+                    :phase="2"
+                    :char-count="streamingHtml.length"
+                    :html-buffer="streamingHtml"
+                  />
+                  <div class="stream-code-shell">
+                    <div class="stream-code-header">
+                      <span class="stream-code-title">HTML 源码预览</span>
+                      <button
+                        type="button"
+                        class="stream-code-copy"
+                        :disabled="!streamingHtml"
+                        @click="copyStreamingHtml"
+                      >
+                        {{ streamHtmlCopied ? '✓ 已复制' : '复制' }}
+                      </button>
+                    </div>
+                    <div class="agent-text agent-text--stream" v-html="renderEscapedSource(streamingHtml)"></div>
+                  </div>
+                </template>
+              </template>
+              <template v-else>
+                <template v-for="(seg, si) in msg.segments" :key="si">
+                  <div v-if="seg.kind === 'text'" class="agent-text">
+                    <MarkdownView :content="seg.content" mode="dark" />
+                  </div>
+                  <div v-else-if="seg.kind === 'html_source'" class="agent-html-source">
+                    <div class="stream-code-header stream-code-header--static">
+                      <span class="stream-code-title">HTML 源码</span>
+                      <button
+                        type="button"
+                        class="stream-code-copy"
+                        @click="copyHtmlSegment(seg.content, htmlSegCopyId(msg, si))"
+                      >
+                        {{ htmlSegCopiedId === htmlSegCopyId(msg, si) ? '✓ 已复制' : '复制' }}
+                      </button>
+                    </div>
+                    <pre class="agent-html-source-pre"><code>{{ seg.content }}</code></pre>
+                  </div>
+                  <div v-else class="agent-card" :class="'card-' + seg.type">
+                    <div class="agent-card-header" @click="seg.open = !seg.open">
+                      <span class="card-icon">{{ seg.icon }}</span>
+                      <span class="card-title-text">{{ seg.title }}</span>
+                      <svg class="chevron" :class="{ open: seg.open }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div v-if="seg.open" class="agent-card-body">
+                      <pre v-if="seg.type === 'bash'" class="bash-block"><code>{{ seg.content }}</code></pre>
+                      <MarkdownView v-else :content="seg.content" mode="dark" />
+                    </div>
+                  </div>
+                </template>
               </template>
             </template>
             <div class="msg-time">{{ msg.time }}</div>
@@ -76,7 +125,7 @@
             <rect x="6" y="6" width="12" height="12" rx="2"/>
           </svg>
         </button>
-        <button class="send-btn" :disabled="!inputText.trim() || loading" @click="sendMessage">
+        <button class="send-btn" :disabled="!inputText.trim() || busy" @click="sendMessage">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
@@ -100,7 +149,8 @@
       <div class="results-content">
         <div v-if="previewMode === 'empty'" class="results-empty">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-          <p>成果将在这里展示</p>
+          <p v-if="busy">{{ loading ? '正在上传，完成后即可预览…' : '正在生成，全部完成后将在此展示预览…' }}</p>
+          <p v-else>成果将在这里展示</p>
         </div>
         <iframe
           v-else-if="previewMode === 'html'"
@@ -150,6 +200,8 @@
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { streamGenerate, uploadHTML } from '../api/workshop.js'
+import WorkshopStreamProgress from '../components/WorkshopStreamProgress.vue'
+import MarkdownView from '../components/MarkdownView.vue'
 
 // ── Layout / drag ──────────────────────────────────────────────
 const workshopEl = ref(null)
@@ -181,8 +233,21 @@ function stopDrag() {
 onBeforeUnmount(() => stopDrag())
 
 // ── Chat state ─────────────────────────────────────────────────
+let messageKeySeq = 0
+function allocMessageKey() {
+  messageKeySeq += 1
+  return messageKeySeq
+}
+
 const messages = ref([])
 const inputText = ref('')
+/** SSE：给用户看的说明（Markdown） */
+const streamingFriendly = ref('')
+/** SSE：HTML 源码（转义后展示） */
+const streamingHtml = ref('')
+/** 整段请求进行中（含 SSE 与上传），用于禁用发送避免重复提交 */
+const busy = ref(false)
+/** 仅用于底部「打字点」：首包前的等待、上传阶段 */
 const loading = ref(false)
 const chatTitle = ref('Agent 对话')
 const messagesEl = ref(null)
@@ -197,10 +262,40 @@ const iframeKey = ref(0)
 const codeCopied = ref(false)
 const urlLoadError = ref(false)
 
+/** 右侧仅在整段 HTML 生成结束（及上传结束）后首次展示，流式过程中不更新 iframe */
+function flushPreviewImmediate(html) {
+  previewHtml.value = html
+  previewMode.value = 'html'
+}
+
 function copyCode() {
   navigator.clipboard.writeText(previewCode.value.content).then(() => {
     codeCopied.value = true
     setTimeout(() => { codeCopied.value = false }, 2000)
+  })
+}
+
+const streamHtmlCopied = ref(false)
+function copyStreamingHtml() {
+  const t = streamingHtml.value
+  if (!t) return
+  navigator.clipboard.writeText(t).then(() => {
+    streamHtmlCopied.value = true
+    setTimeout(() => { streamHtmlCopied.value = false }, 2000)
+  })
+}
+
+const htmlSegCopiedId = ref('')
+function htmlSegCopyId(msg, si) {
+  return `h-${msg.key}-${si}`
+}
+function copyHtmlSegment(text, id) {
+  if (!text) return
+  navigator.clipboard.writeText(text).then(() => {
+    htmlSegCopiedId.value = id
+    setTimeout(() => {
+      if (htmlSegCopiedId.value === id) htmlSegCopiedId.value = ''
+    }, 2000)
   })
 }
 
@@ -241,90 +336,138 @@ function extractTitle(text) {
   return null
 }
 
-// ── Markdown renderer ──────────────────────────────────────────
-function renderMarkdown(text) {
+// ── 流式 HTML 源码展示（勿当 Markdown 解析，仅转义 + 换行） ───────
+function renderEscapedSource(text) {
   if (!text) return ''
   return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>')
 }
 
 // ── Send message ───────────────────────────────────────────────
 async function sendMessage() {
   const text = inputText.value.trim()
-  if (!text || loading.value) return
+  if (!text || busy.value) return
 
   const title = extractTitle(text)
   if (title) chatTitle.value = title
 
-  messages.value.push({ role: 'user', content: text, time: nowTime() })
+  messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
   inputText.value = ''
   if (textareaEl.value) textareaEl.value.style.height = 'auto'
+  busy.value = true
   loading.value = true
+  previewHtml.value = ''
+  previewMode.value = 'empty'
   scrollBottom()
 
-  // 初始化助手消息，显示生成状态
   const assistantMsg = {
+    key: allocMessageKey(),
     role: 'assistant',
-    segments: [{ kind: 'text', content: '🔄 正在生成 HTML...', open: true }],
+    segments: [],
+    streamingLive: true,
     time: ''
   }
   messages.value.push(assistantMsg)
+  streamingFriendly.value = ''
+  streamingHtml.value = ''
+  // 流式阶段由助手气泡展示进度，勿与全局 loading 的「打字点」叠在一起（否则会像一直卡在加载）
+  loading.value = false
 
+  let generatedHTML = ''
   try {
-    // 收集生成的完整 HTML
-    let generatedHTML = ''
-
-    // 调用新的流式生成接口
-    for await (const chunk of streamGenerate(text, '你是一个HTML生成专家，根据用户需求生成完整的、可直接运行的HTML代码。')) {
-      generatedHTML += chunk
-
-      // 更新状态显示（可选：显示进度）
-      const lastSeg = assistantMsg.segments[assistantMsg.segments.length - 1]
-      if (lastSeg && lastSeg.kind === 'text') {
-        lastSeg.content = `🔄 正在生成 HTML... (${generatedHTML.length} 字符)`
+    for await (const part of streamGenerate(
+      text,
+      '你是资深前端与交互设计师，擅长用单个 HTML 文件实现完整、美观、可交互的页面；'
+      + '面向用户的说明需写清功能定位、结构亮点，并交代两阶段输出与右侧预览的进度含义。'
+    )) {
+      if (part.kind === 'friendly') {
+        streamingFriendly.value += part.content
+      } else {
+        streamingHtml.value += part.content
+        generatedHTML += part.content
       }
-
       await nextTick()
       scrollBottom()
     }
 
-    // 生成完成后，上传到 OSS
-    assistantMsg.segments[0].content = '📤 正在上传文件...'
-    await nextTick()
+    const friendlyText = streamingFriendly.value.trim()
+    const htmlText = generatedHTML.trim()
 
-    const fileName = `workshop-${Date.now()}.html`
-    const { url } = await uploadHTML(fileName, generatedHTML)
+    if (!htmlText) {
+      assistantMsg.streamingLive = false
+      streamingFriendly.value = ''
+      streamingHtml.value = ''
+      const hint = friendlyText
+        ? `${friendlyText}\n\n`
+        : ''
+      assistantMsg.segments = [
+        {
+          kind: 'text',
+          content:
+            `${hint}⚠️ 未识别到页面 HTML（模型需先写说明，再单独一行输出分隔符 \`<<<HTML_BEGIN>>>\`，其后跟完整 HTML）。请重试或简化需求。`,
+        },
+      ]
+    } else {
+      assistantMsg.streamingLive = false
+      streamingFriendly.value = ''
+      streamingHtml.value = ''
 
-    // 更新消息显示结果
-    assistantMsg.segments = [
-      { kind: 'text', content: '✅ HTML 生成并上传完成！' },
-      {
-        kind: 'card',
-        type: 'result',
-        icon: '🌐',
-        title: '在线预览',
-        content: url,
-        open: true
-      }
-    ]
+      // 生成完成后，上传到 OSS
+      loading.value = true
+      assistantMsg.segments = [
+        { kind: 'text', content: friendlyText || '（模型未返回说明文字）' },
+        { kind: 'text', content: '\n\n📤 正在上传文件…' },
+      ]
+      await nextTick()
+      scrollBottom()
 
-    // 右侧预览区显示生成的 URL
-    previewUrl.value = url
-    previewMode.value = 'url'
-    iframeKey.value++
+      const fileName = `workshop-${Date.now()}.html`
+      const { url } = await uploadHTML(fileName, generatedHTML)
+
+      // 更新消息：说明 + 完成提示 + 预览卡片 + 窄列展示的 HTML 源码
+      assistantMsg.segments = [
+        { kind: 'text', content: friendlyText || '页面已生成。' },
+        { kind: 'text', content: '\n\n✅ **已完成** 已上传，可在右侧预览或新标签打开。' },
+        {
+          kind: 'card',
+          type: 'result',
+          icon: '🌐',
+          title: '在线预览',
+          content: url,
+          open: true,
+        },
+        { kind: 'html_source', content: generatedHTML },
+      ]
+
+      // 右侧仅在全部生成并上传成功后首次用 URL 加载（流式过程中不刷新 iframe）
+      previewUrl.value = url
+      previewMode.value = 'url'
+      iframeKey.value++
+    }
 
   } catch (e) {
+    assistantMsg.streamingLive = false
+    streamingFriendly.value = ''
+    streamingHtml.value = ''
     const errorMsg = e.name === 'AbortError'
       ? '⚠️ 请求超时，请稍后重试'
       : `⚠️ 请求失败：${e.message}`
-    assistantMsg.segments = [{ kind: 'text', content: errorMsg }]
+    const segs = [{ kind: 'text', content: errorMsg }]
+    if (generatedHTML.trim()) {
+      segs.push({ kind: 'html_source', content: generatedHTML.trim() })
+      // 上传失败等：用本地 HTML 一次性展示在右侧
+      flushPreviewImmediate(generatedHTML.trim())
+    }
+    assistantMsg.segments = segs
+  } finally {
+    busy.value = false
+    loading.value = false
   }
 
   assistantMsg.time = nowTime()
-  loading.value = false
   await nextTick()
   scrollBottom()
 }
@@ -337,6 +480,8 @@ function scrollBottom() {
 }
 function clearChat() {
   messages.value = []
+  streamingFriendly.value = ''
+  streamingHtml.value = ''
   chatTitle.value = 'Agent 对话'
   previewMode.value = 'empty'
   previewHtml.value = ''
@@ -424,11 +569,129 @@ function clearChat() {
   word-break: break-word;
 }
 
+/* VMarkdownView 在紫色气泡内：强制浅色字，避免 dark 主题与背景冲突 */
+.user-bubble--md :deep(.markdown-body) {
+  color: #fff !important;
+  background: transparent !important;
+}
+.user-bubble--md :deep(.markdown-body a) {
+  color: #ede9fe !important;
+}
+.user-bubble--md :deep(.markdown-body code) {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+.user-bubble--md :deep(.markdown-body pre) {
+  background: rgba(0, 0, 0, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
 .agent-text {
   font-size: 0.9rem;
   line-height: 1.6;
   color: var(--text-primary, #e8e8f0);
   padding: 2px 0;
+}
+
+.agent-friendly {
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--text-primary, #e8e8f0);
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--bg-glass-border, rgba(255, 255, 255, 0.06));
+  margin-bottom: 8px;
+}
+
+/* 流式 HTML：加宽、压低高度（约一屏内短条预览），与图中红框比例接近 */
+.stream-code-shell {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--bg-glass-border, rgba(255, 255, 255, 0.1));
+  background: rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.stream-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bg-glass-border, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.stream-code-header--static {
+  margin-bottom: 0;
+  border-radius: 10px 10px 0 0;
+}
+
+.stream-code-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary, #a1a1b0);
+}
+
+.stream-code-copy {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.stream-code-copy:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.22);
+  color: #e0e7ff;
+}
+.stream-code-copy:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.agent-text--stream {
+  width: 100%;
+  max-width: 100%;
+  max-height: clamp(132px, 26vh, 210px);
+  overflow: auto;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+  border-radius: 0;
+  padding: 10px 12px;
+  word-break: break-word;
+}
+
+/* 生成结束后仍展示源码：与流式区同宽，同样压低高度 */
+.agent-html-source {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--bg-glass-border, rgba(255, 255, 255, 0.1));
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.22);
+}
+.agent-html-source-pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: clamp(132px, 26vh, 210px);
+  overflow: auto;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+  border-radius: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .msg-time { font-size: 0.72rem; color: var(--text-secondary, #888); margin-top: 2px; }

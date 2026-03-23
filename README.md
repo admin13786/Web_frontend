@@ -5,7 +5,7 @@
 ## 功能
 
 - **登录页**：居中卡片，用户名/密码输入，登录按钮
-- **工字型主页**：Workshop（顶）、Channel（左）、Remain（右）三块卡片布局
+- **工字型主页**：Workshop（顶）、Channel（左）、OpenMAIC（右）三块卡片布局
 - **频道排行榜**：左侧排名、中间视频列表、右侧统计数据，支持响应式
 
 ## 技术栈
@@ -22,7 +22,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:8000
+访问 http://localhost:5173（Vite 与 Crawl 的 8000 错开，需另起 Crawl：`Backend/Crawl` 下 `python run_local.py` 或 Docker 映射 8000）
 
 可选：在项目根目录 `.env` 中配置 `VITE_OPENMAIC_BASE_URL`（例如 `http://localhost:3000`）。频道页「讲解」会跳转到 OpenMAIC 的 `/api/dialog-prefill?title=…&to=home`，由服务端写入预填并回到首页。
 
