@@ -22,7 +22,7 @@ export default defineConfig({
       },
       // AI 新闻数据库代理服务（专门转发 SQLite 请求）
       '/api/ranks': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:6500',
         changeOrigin: true,
       },
       '/api/articles': {
