@@ -31,6 +31,9 @@ export function getOpenMAICAppUrl() {
   if (explicit) return explicit
   const base = String(OPENMAIC_BASE_URL || '').trim()
   if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:3000`
+  }
   return 'http://localhost:3000'
 }
 
