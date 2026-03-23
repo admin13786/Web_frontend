@@ -196,7 +196,7 @@ import { useRouter } from 'vue-router'
 import { getRankVideo, getRankWeibo } from '../api/rank.js'
 import { getNewsById } from '../mock/news.js'
 import { addFavorite, isFavorite as isFav } from '../api/favorites.js'
-import { OPENMAIC_BASE_URL, buildOpenMAICDialogPrefillHomeUrl } from '../config.js'
+import { OPENMAIC_BASE_URL, OPENMAIC_APP_URL, buildOpenMAICDialogPrefillHomeUrl } from '../config.js'
 
 const router = useRouter()
 
@@ -254,10 +254,11 @@ async function explainNews(item) {
   const title = item?.title
   if (!title) return
 
-  const baseUrl = OPENMAIC_BASE_URL.trim() || 'http://localhost:3000'
-  if (!OPENMAIC_BASE_URL.trim()) {
+  // 使用 OPENMAIC_APP_URL 进行整页跳转（不是 OPENMAIC_BASE_URL）
+  const appUrl = OPENMAIC_APP_URL.trim() || OPENMAIC_BASE_URL.trim() || '/openmaic'
+  if (!OPENMAIC_APP_URL.trim()) {
     console.warn(
-      '[OpenMAIC] VITE_OPENMAIC_BASE_URL 未配置，讲解跳转使用 http://localhost:3000；请在 .env 中配置',
+      '[OpenMAIC] VITE_OPENMAIC_APP_URL 未配置，讲解跳转使用 BASE_URL 或 /openmaic；请在 .env 中配置',
     )
   }
 
@@ -267,7 +268,7 @@ async function explainNews(item) {
   actionMessage.value = `正在通过 OpenMAIC 预填讲解「${title}」…`
 
   try {
-    const url = buildOpenMAICDialogPrefillHomeUrl(baseUrl, title)
+    const url = buildOpenMAICDialogPrefillHomeUrl(appUrl, title)
     await sleep(200)
     window.location.href = url
   } catch (e) {
