@@ -3,18 +3,16 @@
     <div class="channel-header">
       <router-link to="/" class="back-link">← 返回主页</router-link>
       <div class="title-group">
-        <!-- 主榜在左时：频道排行榜大、副频道排行榜小（右下角） -->
         <template v-if="isMainRanking">
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToMain">频道排行榜</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToSub">副频道排行榜</span>
+            <h1 class="page-title title-main" @click="switchToMain">商业 · 行业</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToSub">开发者 · 技术</span>
           </div>
         </template>
-        <!-- 副榜在左时：副频道排行榜大、频道排行榜小（右下角），交换顺序 -->
         <template v-else>
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToSub">副频道排行榜</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToMain">频道排行榜</span>
+            <h1 class="page-title title-main" @click="switchToSub">开发者 · 技术</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToMain">商业 · 行业</span>
           </div>
         </template>
       </div>
@@ -33,7 +31,7 @@
     </div>
     <div v-else-if="loading" class="load-state">加载中…</div>
     <div v-else class="leaderboard-content" :class="{ 'is-sub': !isMainRanking }">
-      <!-- 主频道：创意精选（左）+ 本周新榜（右） -->
+      <!-- 主频道：创意精选（左）+ 企业新榜（右） -->
       <template v-if="isMainRanking">
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">创意精选</h3>
@@ -69,7 +67,7 @@
         </div>
 
         <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">本周新榜</h3>
+          <h3 class="column-title">商业 · 行业</h3>
           <div
             v-for="(item, index) in leftmostData"
             :key="'leftmost-' + item.id"
@@ -82,10 +80,6 @@
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
               <span class="weibo-rank-title">{{ item.title }}</span>
-              <div class="weibo-rank-meta">
-                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
-                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
-              </div>
             </div>
             <div class="rank-actions" @click.stop>
               <button
@@ -110,7 +104,7 @@
         </div>
       </template>
 
-      <!-- 副频道：技能提升（左）+ 热门推荐（右） -->
+      <!-- 副频道：技能提升（左）+ 个人新榜（右） -->
       <template v-else>
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">技能提升</h3>
@@ -146,7 +140,7 @@
         </div>
 
         <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">热门推荐</h3>
+          <h3 class="column-title">开发者 · 技术</h3>
           <div
             v-for="(item, index) in rightmostData"
             :key="'rightmost-' + item.id"
@@ -159,10 +153,6 @@
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
               <span class="weibo-rank-title">{{ item.title }}</span>
-              <div class="weibo-rank-meta">
-                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
-                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
-              </div>
             </div>
             <div class="rank-actions" @click.stop>
               <button
@@ -208,7 +198,7 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-const isMainRanking = ref(true)
+const isMainRanking = ref(false)
 const leftData = ref([])
 const rightData = ref([])
 const leftmostData = ref([])
@@ -709,6 +699,16 @@ onMounted(fetchAll)
 
 .weibo-tag.tag-首发 {
   background: #38bdf8;
+  color: white;
+}
+
+.weibo-tag.tag-速览 {
+  background: #f59e0b;
+  color: white;
+}
+
+.weibo-tag.tag-AI {
+  background: #8b5cf6;
   color: white;
 }
 
