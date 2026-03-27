@@ -20,6 +20,7 @@ jobs:
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
             cd ~/FrontEnd-0317
+            git pull origin main
             docker compose down
             docker compose up --build -d
             echo "Frontend deployed at $(date)"
