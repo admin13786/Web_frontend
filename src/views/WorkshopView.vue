@@ -369,6 +369,39 @@ function normalizeGeneratedHtml(raw) {
   return s.trim()
 }
 
+// 强制让模型生成的单文件页面“铺满”当前预览 iframe，避免出现左右大片留白或右侧固定宽度导致的“长度不匹配”。
+function enforceWorkshopPreviewFit(html) {
+  if (!html) return html
+  const fitCss = `
+html, body {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.container, main, .right-panel, .left-panel, .preview-frame, .preview-iframe {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+}
+.right-panel {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+.preview-frame, iframe {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+`
+
+  // 优先插入到 </head> 前，保证更高优先级且不依赖模型结构
+  if (html.includes('</head>')) {
+    return html.replace('</head>', `<style>${fitCss}</style></head>`)
+  }
+  return `${html}<style>${fitCss}</style>`
+}
+
 // ── Send message ───────────────────────────────────────────────
 async function sendMessage() {
   const text = inputText.value.trim()
@@ -419,6 +452,7 @@ async function sendMessage() {
 
     const friendlyText = streamingFriendly.value.trim()
     cleanedHTML = normalizeGeneratedHtml(generatedHTML)
+    cleanedHTML = enforceWorkshopPreviewFit(cleanedHTML)
     const htmlText = cleanedHTML.trim()
 
     if (!htmlText) {
@@ -482,7 +516,7 @@ async function sendMessage() {
     if (cleanedHTML?.trim()) {
       segs.push({ kind: 'html_source', content: cleanedHTML.trim() })
       // 上传失败等：用本地 HTML 一次性展示在右侧
-      flushPreviewImmediate(cleanedHTML.trim())
+      flushPreviewImmediate(enforceWorkshopPreviewFit(cleanedHTML.trim()))
     }
     assistantMsg.segments = segs
   } finally {
@@ -856,6 +890,8 @@ function clearChat() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 .results-empty {
@@ -872,6 +908,9 @@ function clearChat() {
 .preview-iframe {
   flex: 1;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
   border: none;
   background: #fff;
 }
@@ -910,6 +949,8 @@ function clearChat() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
+  min-width: 0;
 }
 
 .url-bar {

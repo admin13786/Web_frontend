@@ -36,6 +36,18 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/api/page-screenshot': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/page-screenshot.png': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/og-image': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       // 登录认证
       '/api/auth': {
         target: 'http://localhost:8000',

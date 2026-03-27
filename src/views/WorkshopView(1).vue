@@ -575,6 +575,8 @@ function clearChat() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 .results-empty {
@@ -591,6 +593,9 @@ function clearChat() {
 .preview-iframe {
   flex: 1;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
   border: none;
   background: #fff;
 }
@@ -629,6 +634,8 @@ function clearChat() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
+  min-width: 0;
 }
 
 .url-bar {

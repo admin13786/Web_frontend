@@ -21,11 +21,10 @@
         <div class="news-actions">
           <button
             type="button"
-            class="news-action-btn"
-            :class="{ 'is-favorite': isFav }"
-            @click="handleFavorite"
+            class="news-action-btn news-action-summary"
+            @click="goToSummary"
           >
-            {{ isFav ? '已收藏' : '收藏到收藏夹' }}
+            概述
           </button>
 
           <button
@@ -65,20 +64,18 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { OPENMAIC_BASE_URL } from '../config.js'
 import { getNewsById } from '../mock/news.js'
-import { addFavorite, isFavorite } from '../api/favorites.js'
 
 const route = useRoute()
+const router = useRouter()
 const routeNewsId = computed(() => route.params.newsId)
 const newsId = computed(() => String(route.params.newsId || ''))
 const explainAuto = computed(() => route.query.explain === '1')
 
 const loading = ref(true)
 const news = ref(null)
-
-const isFav = ref(false)
 
 const openmaicBaseUrl = OPENMAIC_BASE_URL
 
@@ -102,11 +99,6 @@ async function runExplain() {
     return
   }
   if (!news.value) return
-
-  // 讲解前先确保写入收藏夹，方便后续复用
-  if (!isFav.value) {
-    handleFavorite()
-  }
 
   explainLoading.value = true
   explainError.value = ''
@@ -176,28 +168,20 @@ async function runExplain() {
   }
 }
 
-function handleFavorite() {
-  const n = news.value
-  if (!n) return
-  addFavorite({
-    newsId: n.newsId,
-    title: n.title,
-    source: n.source,
-    url: n.url,
-    text: n.text,
-  })
-  isFav.value = true
+function goToSummary() {
+  const id = newsId.value
+  if (/^[0-9]+$/.test(id)) {
+    router.push(`/brief/${encodeURIComponent(id)}`)
+  }
 }
 
 onMounted(async () => {
   loading.value = true
   const n = getNewsById(newsId.value)
   news.value = n
-  isFav.value = isFavorite(newsId.value)
   loading.value = false
 
   if (explainAuto.value && news.value) {
-    // 等待页面渲染稳定一点再开始生成
     setTimeout(() => runExplain(), 200)
   }
 })
@@ -210,7 +194,6 @@ watch(
     explainError.value = ''
     explainStatus.value = null
     classroomUrl.value = ''
-    isFav.value = isFavorite(newsId.value)
     loading.value = false
 
     if (explainAuto.value && news.value) {
@@ -319,9 +302,8 @@ watch(
   transform: translateY(-1px);
 }
 
-.news-action-btn.is-favorite {
-  background: rgba(99, 102, 241, 0.22);
-  border-color: rgba(99, 102, 241, 0.6);
+.news-action-summary {
+  background: rgba(34, 197, 94, 0.12);
 }
 
 .news-action-explain {

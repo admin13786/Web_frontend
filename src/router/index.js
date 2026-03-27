@@ -29,6 +29,12 @@ const routes = [
     component: () => import('../views/NewsDetailView.vue'),
     meta: { requiresAuth: false }
   },
+  {
+    path: '/brief/:newsId',
+    name: 'NewsBrief',
+    component: () => import('../views/NewsBriefView.vue'),
+    meta: { requiresAuth: false }
+  },
   // 如需恢复登录页面，取消下面注释
   // {
   //   path: '/login',
