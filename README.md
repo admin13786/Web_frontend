@@ -30,19 +30,17 @@ npm run dev
 
 **服务器上需要安装的只有 Docker**，无需单独安装 Node、Nginx 或其它库；镜像内已包含构建与运行所需环境。
 
-## CI/CD：构建镜像并推送到镜像仓库（Docker Hub）
+## CI/CD
 
-项目已包含 GitHub Actions 工作流：push 到 `main`（或打 `vX.Y.Z` tag）时自动构建镜像并推送到 Docker Hub。
+当前前端采用 SSH 直连服务器发布：当 `main` 有新提交（或手动触发）时，GitHub Actions 会登录服务器并在前端目录执行 `git pull` 后重启容器。
 
-- **镜像地址**：`docker.io/akaina666666/frontend:<tag>`
-- **默认 tag**：`main`、`sha-<短哈希>`，以及发布 tag（如 `v1.2.3`）
-- **Docker Hub 登录（Secrets）**：
-  - `DOCKERHUB_TOKEN`：Docker Hub Access Token（建议用 token，不要用密码）
-- **可选构建参数（Secrets）**：
-  - `VITE_API_BASE`：后端 API Base URL（例如 `https://api.example.com`）
-  - `VITE_USE_MOCK`：是否启用 mock（例如 `false`）
-
-首次使用前，请先在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions` 配好上述 Secrets。
+- **工作流文件**：`FrontEnd/.github/workflows/deploy.yml`
+- **服务器目录**：`~/FrontEnd-0317`
+- **重启命令**：`docker compose down && docker compose up -d --build --remove-orphans`
+- **所需 Secrets**：
+  - `ECS_HOST`
+  - `ECS_USER`
+  - `ECS_SSH_KEY`
 
 1. **构建镜像**（如需指定后端 API 地址，可传构建参数）：
    ```bash
