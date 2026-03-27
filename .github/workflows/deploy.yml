@@ -1,4 +1,4 @@
-name: Frontend CI/CD
+name: Full Stack Deploy
 
 on:
   push:
@@ -11,16 +11,46 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    concurrency:
+      group: full-stack-production
+      cancel-in-progress: false
     steps:
-      - name: Deploy Frontend to ECS
+      - name: Deploy FrontEnd, Crawl, and OpenMAIC
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
-            cd ~/FrontEnd-0317
-            git pull origin main
-            docker compose down
-            docker compose up -d --build --remove-orphans
-            echo "Frontend deployed at $(date)"
+            set -euo pipefail
+
+            FRONTEND_DIR="$HOME/FrontEnd-0317"
+            BACKEND_DIR="$HOME/Backend"
+
+            for dir in "$FRONTEND_DIR" "$BACKEND_DIR"; do
+              if [ ! -d "$dir/.git" ]; then
+                echo "Missing git repo: $dir" >&2
+                exit 1
+              fi
+            done
+
+            sync_repo() {
+              local repo_dir="$1"
+              local branch="${2:-main}"
+
+              cd "$repo_dir"
+              git fetch origin "$branch"
+              git checkout "$branch"
+              git pull --ff-only origin "$branch"
+              echo "Synced $(basename "$repo_dir") -> $(git rev-parse --short HEAD)"
+            }
+
+            sync_repo "$BACKEND_DIR" main
+            sync_repo "$FRONTEND_DIR" main
+
+            docker compose -f "$BACKEND_DIR/Crawl/docker-compose.yml" up -d --build --remove-orphans
+            docker compose -f "$BACKEND_DIR/OpenMAIC/docker-compose.yml" up -d --build --remove-orphans
+            docker compose -f "$FRONTEND_DIR/docker-compose.yml" up -d --build --remove-orphans
+
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "frontend|Crawl|openmaic|NAME"
+            echo "Full stack deployed at $(date -Is)"
