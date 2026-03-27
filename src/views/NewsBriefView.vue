@@ -73,15 +73,42 @@ const error = ref('')
 const article = ref(null)
 const brief = ref(null)
 
+function cleanPara(s) {
+  return (s || '').replace(/[。.]\s*来源\s*$/, '。').replace(/\s*来源\s*$/, '').trim()
+}
+
 const displayParagraphs = computed(() => {
-  const lead = (brief.value?.lead || '').trim()
-  const paras = brief.value?.paragraphs
-  if (!Array.isArray(paras) || !paras.length) return lead ? [lead] : []
-  const isDup = paras.some((p) => {
-    const pt = (p || '').trim()
-    return pt === lead || lead.startsWith(pt) || pt.startsWith(lead)
-  })
-  return isDup ? paras : (lead ? [lead, ...paras] : paras)
+  const lead = cleanPara(brief.value?.lead || '')
+  const rawParas = brief.value?.paragraphs
+  let paras = Array.isArray(rawParas) ? rawParas.map(cleanPara).filter(Boolean) : []
+
+  let result
+  if (!paras.length) {
+    result = lead ? [lead] : []
+  } else {
+    const isDup = paras.some((pt) => pt === lead || lead.startsWith(pt) || pt.startsWith(lead))
+    result = isDup ? paras : (lead ? [lead, ...paras] : paras)
+  }
+
+  if (result.length <= 1 && article.value) {
+    const summary = cleanPara(article.value.summary || '')
+    const content = cleanPara(article.value.content || '')
+    const existing = result.join('')
+    if (summary && !existing.includes(summary) && !summary.includes(existing)) {
+      result.push(summary)
+    }
+    if (content && content.length > 60) {
+      const contentParas = content.split(/\n+/).map(p => p.trim()).filter(p => p.length > 20)
+      for (const cp of contentParas) {
+        if (!existing.includes(cp) && !result.some(r => r.includes(cp) || cp.includes(r))) {
+          result.push(cp)
+        }
+        if (result.length >= 4) break
+      }
+    }
+  }
+
+  return result.filter(Boolean)
 })
 
 const footerDomain = computed(() => {
@@ -150,6 +177,7 @@ watch(
   min-height: 100vh;
   padding: 20px 16px 60px;
   background: var(--bg-primary);
+  overflow: visible;
 }
 
 /* ── 顶部导航 ── */

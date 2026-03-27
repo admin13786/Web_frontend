@@ -13,6 +13,7 @@
 
 <style scoped>
 .app-container {
+  position: relative;
   min-height: 100vh;
   overflow-x: hidden;
 }
