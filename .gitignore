@@ -1,8 +1,4 @@
 .DS_Store
-# 注意：.env 现在包含在版本控制中，确保不包含敏感信息
-.env.local
-.env.*.local
-!.env.example
 
 # Logs
 logs
