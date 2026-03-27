@@ -62,12 +62,10 @@
                     @error="onCoverError(item)"
                     @load="onCoverLoad($event, item)"
                   />
-                  <div class="cover-overlay">
-                    <span class="video-label">{{ item.tag || '新闻' }}</span>
-                  </div>
+                  <div class="cover-overlay" />
                 </div>
                 <div v-else class="video-cover">
-                  <span class="video-label">{{ item.tag || '新闻' }}</span>
+                  <span class="video-label">暂无封面</span>
                 </div>
               </div>
             </div>
@@ -153,12 +151,10 @@
                     @error="onCoverError(item)"
                     @load="onCoverLoad($event, item)"
                   />
-                  <div class="cover-overlay">
-                    <span class="video-label">{{ item.tag || '新闻' }}</span>
-                  </div>
+                  <div class="cover-overlay" />
                 </div>
                 <div v-else class="video-cover">
-                  <span class="video-label">{{ item.tag || '新闻' }}</span>
+                  <span class="video-label">暂无封面</span>
                 </div>
               </div>
             </div>
