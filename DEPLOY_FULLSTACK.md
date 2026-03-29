@@ -62,9 +62,12 @@ These files are not committed, but must exist on the server before deployment:
 
 ```bash
 ~/Backend/Crawl/.env
-~/Backend/.env.workshop
+~/Backend/WorkShop/.env
 ~/Backend/OpenMAIC/.env.local
 ```
+
+`~/Backend/WorkShop/.env` is the shared backend env file used by both
+`Backend/WorkShop` and `Backend/Crawl` for OSS / DashScope-style credentials.
 
 If `OpenMAIC` image/video generation is required, make sure
 `~/Backend/OpenMAIC/.env.local` includes valid provider credentials such as:
