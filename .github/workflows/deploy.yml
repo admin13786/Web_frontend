@@ -26,6 +26,7 @@ jobs:
 
             FRONTEND_DIR="$HOME/FrontEnd-0317"
             BACKEND_DIR="$HOME/Backend"
+            BACKEND_RUNTIME_BACKUP="/tmp/backend-crawl-runtime-backup"
 
             for dir in "$FRONTEND_DIR" "$BACKEND_DIR"; do
               if [ ! -d "$dir/.git" ]; then
@@ -34,19 +35,57 @@ jobs:
               fi
             done
 
+            backup_backend_runtime() {
+              rm -rf "$BACKEND_RUNTIME_BACKUP"
+              mkdir -p "$BACKEND_RUNTIME_BACKUP"
+
+              if [ -f "$BACKEND_DIR/Crawl/db/ai_news.db" ]; then
+                cp -f "$BACKEND_DIR/Crawl/db/ai_news.db" "$BACKEND_RUNTIME_BACKUP/ai_news.db"
+              fi
+
+              if [ -d "$BACKEND_DIR/Crawl/logs" ]; then
+                cp -a "$BACKEND_DIR/Crawl/logs" "$BACKEND_RUNTIME_BACKUP/logs"
+              fi
+            }
+
+            restore_backend_runtime() {
+              mkdir -p "$BACKEND_DIR/Crawl/db" "$BACKEND_DIR/Crawl/logs"
+
+              if [ -f "$BACKEND_RUNTIME_BACKUP/ai_news.db" ]; then
+                cp -f "$BACKEND_RUNTIME_BACKUP/ai_news.db" "$BACKEND_DIR/Crawl/db/ai_news.db"
+              fi
+
+              if [ -d "$BACKEND_RUNTIME_BACKUP/logs" ]; then
+                rm -rf "$BACKEND_DIR/Crawl/logs"
+                cp -a "$BACKEND_RUNTIME_BACKUP/logs" "$BACKEND_DIR/Crawl/logs"
+              fi
+            }
+
             sync_repo() {
               local repo_dir="$1"
               local branch="${2:-main}"
+              local mode="${3:-plain}"
 
               cd "$repo_dir"
+
+              if [ "$mode" = "backend" ]; then
+                backup_backend_runtime
+              fi
+
               git fetch origin "$branch"
               git checkout "$branch"
-              git pull --ff-only origin "$branch"
+              git reset --hard "origin/$branch"
+              git clean -fd
+
+              if [ "$mode" = "backend" ]; then
+                restore_backend_runtime
+              fi
+
               echo "Synced $(basename "$repo_dir") -> $(git rev-parse --short HEAD)"
             }
 
-            sync_repo "$BACKEND_DIR" main
-            sync_repo "$FRONTEND_DIR" main
+            sync_repo "$BACKEND_DIR" main backend
+            sync_repo "$FRONTEND_DIR" main plain
 
             docker compose -f "$BACKEND_DIR/Crawl/docker-compose.yml" up -d --build --remove-orphans
             docker compose -f "$BACKEND_DIR/OpenMAIC/docker-compose.yml" up -d --build --remove-orphans
