@@ -27,9 +27,9 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/workshop/, ''),
       },
-      // AI 新闻数据库代理服务
+      // AI 新闻榜单代理服务（直接走 Crawl API）
       '/api/ranks': {
-        target: 'http://localhost:6500',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/api/articles': {

@@ -9,7 +9,6 @@ APIs it depends on.
 - `FrontEnd` publishes the Vue + Nginx site on port `80`
 - `Backend/Crawl` publishes:
   - `api` on port `8000`
-  - `db_relay` on port `6500`
   - `crawler` on port `6600`
   - `monitor` on port `6666`
 - `Backend/OpenMAIC` publishes Next.js on port `3000`

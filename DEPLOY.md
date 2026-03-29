@@ -7,7 +7,7 @@
 | OpenMAIC | 3000 | 教育龙虾课堂生成服务 |
 | Crawl | 8000 | AI 新闻采集（本地模式） |
 | Crawl Worker | 6600 | 新闻采集 Worker（Docker） |
-| Crawl DB Relay | 6500 | 数据库代理服务 |
+| Crawl API | 8000 | 榜单、详情、认证与封面相关接口 |
 | Workshop | 5000 | URL 生成服务 |
 
 ---
@@ -129,7 +129,7 @@ ports:
 - [ ] OpenMAIC (3000) 正在运行且监听 0.0.0.0
 - [ ] Crawl (8000) 正在运行（如使用本地模式）
 - [ ] Crawl Worker (6600) Docker 容器运行中（如使用 Docker）
-- [ ] Crawl DB Relay (6500) Docker 容器运行中
+- [ ] Crawl API (8000) Docker 容器运行中
 - [ ] Workshop (5000) Docker 容器运行中（如需要）
 - [ ] 服务器防火墙放行相应端口
 - [ ] 云服务器安全组放行相应端口
