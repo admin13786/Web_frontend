@@ -1,14 +1,133 @@
 <template>
   <div class="workshop" ref="workshopEl">
+    <aside class="history-sidebar" :class="{ expanded: sidebarExpanded }">
+      <div class="sidebar-top">
+        <button type="button" class="sidebar-icon-btn" :title="sidebarExpanded ? '收起侧栏' : '展开侧栏'" @click="toggleSidebar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
+          </svg>
+        </button>
+
+        <button type="button" class="sidebar-icon-btn" title="新建对话" @click="createNewConversation">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1">
+            <path d="M12 5v14M5 12h14" />
+            <path d="M19 3l2 2-9.5 9.5H9.5V12z" />
+          </svg>
+        </button>
+      </div>
+
+      <template v-if="sidebarExpanded">
+        <div class="sidebar-brand">Workshop</div>
+
+        <div class="sidebar-actions">
+          <button type="button" class="sidebar-action-row" @click="createNewConversation">
+            <span class="sidebar-action-icon">✎</span>
+            <span>发起新对话</span>
+          </button>
+          <div class="sidebar-user-card">
+            <div class="sidebar-user-label">当前用户</div>
+            <div class="sidebar-user-name">{{ userDisplayName }}</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">对话</div>
+          <div class="sidebar-conversation-list">
+            <div
+              v-for="item in conversationList"
+              :key="item.id"
+              class="sidebar-conversation-item"
+              :class="{ active: item.id === currentConversationId }"
+            >
+              <div class="sidebar-conversation-main">
+                <template v-if="editingConversationId === item.id">
+                  <input
+                    :id="conversationInputId(item.id)"
+                    v-model="editingTitle"
+                    type="text"
+                    class="sidebar-conversation-input"
+                    maxlength="40"
+                    @click.stop
+                    @keydown.enter.prevent="commitRename(item.id)"
+                    @keydown.esc.prevent="cancelRename"
+                    @blur="commitRename(item.id)"
+                  />
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="sidebar-conversation-switch"
+                  @click="switchConversation(item.id)"
+                >
+                  <span class="sidebar-conversation-name">{{ item.title }}</span>
+                  <span class="sidebar-conversation-time">{{ formatConversationTime(item.updatedAt) }}</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="sidebar-conversation-edit"
+                title="修改对话名"
+                @click="startRename(item.id)"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                </svg>
+              </button>
+              <button
+                v-if="conversationList.length > 1"
+                type="button"
+                class="sidebar-conversation-delete"
+                title="删除对话"
+                @click="deleteConversation(item.id)"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button type="button" class="sidebar-action-row sidebar-action-row--muted" @click="logout">
+            <span class="sidebar-action-icon">⚙</span>
+            <span>退出登录</span>
+          </button>
+        </div>
+      </template>
+    </aside>
+
+    <div class="workspace-main">
     <!-- Left: Chat Panel -->
     <div class="chat-panel" :style="{ width: leftWidth + '%' }">
       <div class="chat-header">
-        <span class="chat-title">{{ chatTitle }}</span>
+        <div class="chat-header-main">
+          <div>
+            <div class="chat-title-row">
+              <div class="chat-title">{{ chatTitle }}</div>
+              <button type="button" class="title-edit-btn" title="修改对话名" @click="startRename(currentConversationId)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                </svg>
+              </button>
+            </div>
+            <div class="chat-subtitle">当前用户：{{ userDisplayName }}</div>
+          </div>
+        </div>
         <div class="header-actions">
-          <button class="icon-btn" title="新建对话" @click="clearChat">
+          <button class="icon-btn" :title="sidebarExpanded ? '收起历史侧栏' : '展开历史侧栏'" @click="toggleSidebar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+          <button class="icon-btn" title="新建对话" @click="createNewConversation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button class="icon-btn" title="清空" @click="clearChat">
+          <button class="icon-btn" title="清空当前对话" @click="clearChat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
           </button>
         </div>
@@ -187,14 +306,29 @@
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { logout as logoutApi } from '../api/auth.js'
 import { streamGenerate, uploadHTML } from '../api/workshop.js'
+import {
+  deleteWorkshopConversation,
+  fetchWorkshopConversations,
+  saveWorkshopConversation,
+} from '../api/workshopConversations.js'
 import WorkshopStreamProgress from '../components/WorkshopStreamProgress.vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
+import { createEmptyConversation } from '../utils/workshopHistory.js'
+
+const router = useRouter()
+const currentUser = ref(getCurrentUser())
+const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '未登录')
+const sidebarExpanded = ref(false)
 
 // ── Layout / drag ──────────────────────────────────────────────
 const workshopEl = ref(null)
@@ -223,7 +357,6 @@ function stopDrag() {
   document.removeEventListener('mouseup', stopDrag)
   document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '')
 }
-onBeforeUnmount(() => stopDrag())
 
 // ── Chat state ─────────────────────────────────────────────────
 let messageKeySeq = 0
@@ -245,6 +378,13 @@ const loading = ref(false)
 const chatTitle = ref('Agent 对话')
 const messagesEl = ref(null)
 const textareaEl = ref(null)
+const conversationList = ref([])
+const currentConversationId = ref('')
+const editingConversationId = ref('')
+const editingTitle = ref('')
+let historyHydrating = false
+let persistTimer = null
+const historyReady = ref(false)
 
 // ── Right panel state ──────────────────────────────────────────
 const previewMode = ref('empty')
@@ -254,6 +394,219 @@ const previewCode = ref({ lang: '', content: '' })
 const iframeKey = ref(0)
 const codeCopied = ref(false)
 const urlLoadError = ref(false)
+
+function cloneMessages(list) {
+  return JSON.parse(JSON.stringify(Array.isArray(list) ? list : []))
+}
+
+function buildConversationSnapshot() {
+  const current = conversationList.value.find((item) => item.id === currentConversationId.value)
+  return {
+    id: currentConversationId.value,
+    title: chatTitle.value || '新对话',
+    createdAt: current?.createdAt || new Date().toISOString(),
+    messages: cloneMessages(messages.value),
+    updatedAt: new Date().toISOString(),
+    preview: {
+      mode: previewMode.value,
+      html: previewHtml.value,
+      url: previewUrl.value,
+      code: { ...previewCode.value },
+    },
+  }
+}
+
+function applyConversation(conversation) {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  cancelRename()
+  historyHydrating = true
+  currentConversationId.value = conversation.id
+  chatTitle.value = conversation.title || '新对话'
+  messages.value = cloneMessages(conversation.messages || [])
+  previewMode.value = conversation.preview?.mode || 'empty'
+  previewHtml.value = conversation.preview?.html || ''
+  previewUrl.value = conversation.preview?.url || ''
+  previewCode.value = {
+    lang: conversation.preview?.code?.lang || '',
+    content: conversation.preview?.code?.content || '',
+  }
+  streamingFriendly.value = ''
+  streamingHtml.value = ''
+  urlLoadError.value = false
+  nextTick(() => {
+    historyHydrating = false
+    scrollBottom()
+  })
+}
+
+async function persistConversations() {
+  if (historyHydrating || !historyReady.value || !currentUser.value?.username || !currentConversationId.value) return
+  const snapshot = buildConversationSnapshot()
+  const nextList = [...conversationList.value]
+  const index = nextList.findIndex((item) => item.id === snapshot.id)
+  if (index >= 0) {
+    nextList[index] = {
+      ...nextList[index],
+      ...snapshot,
+      createdAt: nextList[index].createdAt || snapshot.updatedAt,
+    }
+  } else {
+    nextList.unshift({
+      ...snapshot,
+      createdAt: snapshot.updatedAt,
+    })
+  }
+  nextList.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+  conversationList.value = nextList
+  const saved = await saveWorkshopConversation(snapshot)
+  const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
+  if (savedIndex >= 0) {
+    const merged = [...conversationList.value]
+    merged[savedIndex] = {
+      ...merged[savedIndex],
+      ...saved,
+    }
+    merged.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    conversationList.value = merged
+  }
+}
+
+function schedulePersist() {
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(async () => {
+    await persistConversations()
+    persistTimer = null
+  }, 120)
+}
+
+async function createNewConversation() {
+  const conversation = createEmptyConversation()
+  conversationList.value = [conversation, ...conversationList.value]
+  applyConversation(conversation)
+  await persistConversations()
+  sidebarExpanded.value = true
+  startRename(conversation.id)
+}
+
+function switchConversation(id) {
+  if (!id || id === currentConversationId.value || busy.value || editingConversationId.value) return
+  const conversation = conversationList.value.find((item) => item.id === id)
+  if (conversation) applyConversation(conversation)
+}
+
+async function deleteConversation(id) {
+  if (!id || conversationList.value.length <= 1 || busy.value) return
+  const conversation = conversationList.value.find((item) => item.id === id)
+  const targetTitle = conversation?.title || '该对话'
+  const confirmed = window.confirm(`确定删除“${targetTitle}”吗？删除后无法恢复。`)
+  if (!confirmed) return
+  await deleteWorkshopConversation(id)
+  const nextList = conversationList.value.filter((item) => item.id !== id)
+  conversationList.value = nextList
+  if (currentConversationId.value === id && nextList[0]) {
+    applyConversation(nextList[0])
+  }
+}
+
+async function loadWorkshopHistory() {
+  if (!currentUser.value?.username) {
+    router.push('/login')
+    return
+  }
+  const conversations = await fetchWorkshopConversations()
+  conversationList.value = conversations
+  let current = conversations[0]
+  if (!current) {
+    current = createEmptyConversation()
+    conversationList.value = [current]
+    historyReady.value = true
+    applyConversation(current)
+    await persistConversations()
+    return
+  }
+  applyConversation(current)
+  historyReady.value = true
+}
+
+async function logout() {
+  await logoutApi().catch(() => null)
+  clearCurrentUser()
+  router.push('/login')
+}
+
+function toggleSidebar() {
+  sidebarExpanded.value = !sidebarExpanded.value
+}
+
+function conversationInputId(id) {
+  return `conversation-title-input-${id}`
+}
+
+function focusRenameInput(id) {
+  nextTick(() => {
+    const el = document.getElementById(conversationInputId(id))
+    if (el instanceof HTMLInputElement) {
+      el.focus()
+      el.select()
+    }
+  })
+}
+
+function startRename(id) {
+  if (!id) return
+  const conversation = conversationList.value.find((item) => item.id === id)
+  if (!conversation) return
+  editingConversationId.value = id
+  editingTitle.value = conversation.title || '新对话'
+  sidebarExpanded.value = true
+  focusRenameInput(id)
+}
+
+function cancelRename() {
+  editingConversationId.value = ''
+  editingTitle.value = ''
+}
+
+async function commitRename(id) {
+  if (!id || editingConversationId.value !== id) return
+  const title = String(editingTitle.value || '').trim() || '新对话'
+  const index = conversationList.value.findIndex((item) => item.id === id)
+  if (index === -1) {
+    cancelRename()
+    return
+  }
+  const nextList = [...conversationList.value]
+  nextList[index] = {
+    ...nextList[index],
+    title,
+  }
+  conversationList.value = nextList
+  if (currentConversationId.value === id) {
+    chatTitle.value = title
+  }
+  cancelRename()
+
+  try {
+    if (currentConversationId.value === id) {
+      await persistConversations()
+    } else {
+      await saveWorkshopConversation(nextList[index])
+    }
+  } catch (e) {
+    // 改名先保证前端立即生效；若后端同步失败，保留当前标题，避免用户感觉“没反应”。
+    console.error('rename conversation failed:', e)
+  }
+}
+
+function formatConversationTime(raw) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
 
 /** 右侧仅在整段 HTML 生成结束（及上传结束）后首次展示，流式过程中不更新 iframe */
 function flushPreviewImmediate(html) {
@@ -539,13 +892,40 @@ function clearChat() {
   messages.value = []
   streamingFriendly.value = ''
   streamingHtml.value = ''
-  chatTitle.value = 'Agent 对话'
+  chatTitle.value = '新对话'
   previewMode.value = 'empty'
   previewHtml.value = ''
   previewUrl.value = ''
   previewCode.value = { lang: '', content: '' }
   urlLoadError.value = false
+  persistConversations()
 }
+
+onMounted(async () => {
+  try {
+    await loadWorkshopHistory()
+  } catch (e) {
+    const fallback = createEmptyConversation()
+    conversationList.value = [fallback]
+    historyReady.value = true
+    applyConversation(fallback)
+  }
+})
+
+watch(
+  [messages, chatTitle, previewMode, previewHtml, previewUrl, previewCode],
+  () => {
+    if (historyHydrating) return
+    schedulePersist()
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  stopDrag()
+  if (persistTimer) clearTimeout(persistTimer)
+  persistConversations()
+})
 </script>
 
 <style scoped>
@@ -556,6 +936,229 @@ function clearChat() {
   background: var(--bg-base, #0f0f13);
   color: var(--text-primary, #e8e8f0);
   font-family: 'Inter', sans-serif;
+}
+
+.history-sidebar {
+  width: 74px;
+  flex-shrink: 0;
+  height: 100%;
+  background: rgba(31, 31, 34, 0.98);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px 18px;
+  overflow: hidden;
+  transition: width 0.28s ease, padding 0.28s ease;
+}
+
+.history-sidebar.expanded {
+  width: 320px;
+  padding: 16px 18px 18px;
+}
+
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+}
+
+.history-sidebar.expanded .sidebar-top {
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.sidebar-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.sidebar-icon-btn:hover {
+  background: rgba(255,255,255,0.08);
+  transform: translateY(-1px);
+}
+
+.sidebar-brand {
+  margin-top: 14px;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: rgba(255,255,255,0.94);
+}
+
+.sidebar-actions {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebar-action-row {
+  width: 100%;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: rgba(255,255,255,0.88);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-action-row:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.sidebar-action-row--muted {
+  color: rgba(255,255,255,0.74);
+}
+
+.sidebar-action-icon {
+  width: 28px;
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.sidebar-user-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.sidebar-user-label {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.54);
+}
+
+.sidebar-user-name {
+  margin-top: 6px;
+  font-size: 0.98rem;
+  color: rgba(255,255,255,0.92);
+}
+
+.sidebar-section {
+  margin-top: 28px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.sidebar-section-title {
+  margin-bottom: 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.94);
+}
+
+.sidebar-conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sidebar-conversation-item {
+  display: flex;
+  align-items: stretch;
+  border-radius: 22px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.sidebar-conversation-item.active {
+  background: rgba(48, 79, 139, 0.82);
+}
+
+.sidebar-conversation-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-conversation-switch {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 15px 18px;
+}
+
+.sidebar-conversation-input {
+  width: 100%;
+  margin: 10px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(99,102,241,0.42);
+  background: rgba(12,12,16,0.78);
+  color: rgba(255,255,255,0.94);
+  font-size: 0.92rem;
+  outline: none;
+}
+
+.sidebar-conversation-name,
+.sidebar-conversation-time {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-conversation-name {
+  font-size: 0.98rem;
+  color: rgba(255,255,255,0.94);
+}
+
+.sidebar-conversation-time {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.6);
+}
+
+.sidebar-conversation-edit,
+.sidebar-conversation-delete {
+  width: 40px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.46);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-conversation-edit:hover,
+.sidebar-conversation-delete:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.sidebar-footer {
+  margin-top: 14px;
+}
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
 }
 
 .divider {
@@ -575,13 +1178,43 @@ function clearChat() {
 
 .chat-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
   flex-shrink: 0;
 }
+.chat-header-main {
+  min-width: 0;
+}
+.chat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .chat-title { font-weight: 600; font-size: 0.95rem; }
+.title-edit-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.title-edit-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary, #e8e8f0);
+}
+.chat-subtitle {
+  margin-top: 4px;
+  color: var(--text-secondary, #888);
+  font-size: 0.8rem;
+}
 .header-actions { display: flex; gap: 6px; }
 .icon-btn {
   background: none; border: none; cursor: pointer;
@@ -1017,5 +1650,27 @@ function clearChat() {
   color: #c9d1d9;
   background: rgba(0,0,0,0.2);
   white-space: pre;
+}
+
+@media (max-width: 900px) {
+  .history-sidebar.expanded {
+    width: 270px;
+  }
+}
+
+@media (max-width: 768px) {
+  .history-sidebar {
+    width: 64px;
+    padding: 12px 10px 14px;
+  }
+
+  .history-sidebar.expanded {
+    width: 248px;
+    padding: 12px 14px 14px;
+  }
+
+  .sidebar-brand {
+    font-size: 1.55rem;
+  }
 }
 </style>
