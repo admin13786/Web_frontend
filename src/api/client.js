@@ -8,11 +8,15 @@ import { API_BASE } from '../config.js'
  */
 export async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`
+  const token = getAuthToken()
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  }
   const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     ...options,
   })
   const contentType = res.headers.get('content-type')

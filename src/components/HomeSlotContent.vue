@@ -27,7 +27,7 @@ defineEmits(['navigate'])
 const content = {
   channel: { title: 'Channel', desc: '频道排行榜' },
   workshop: { title: 'Workshop', desc: '创意工作坊 · 探索与协作空间' },
-  remain: { title: 'Remain', desc: '其他内容与资源' }
+  remain: { title: 'OpenMAIC', desc: '教育龙虾' }
 }
 
 const title = computed(() => content[props.card]?.title || '')

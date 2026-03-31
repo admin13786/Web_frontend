@@ -1,7 +1,4 @@
 .DS_Store
-.env
-.env.*
-!.env.example
 
 # Logs
 logs
@@ -20,7 +17,4 @@ node_modules/
 
 # Build output
 dist/
-
-# Vercel
-.vercel/
 

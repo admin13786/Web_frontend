@@ -1,6 +1,13 @@
 <template>
   <div class="home-page">
     <div class="home-bg" />
+    <div class="account-bar">
+      <div class="account-chip">
+        <span class="account-label">当前用户</span>
+        <strong>{{ userName }}</strong>
+      </div>
+      <button type="button" class="account-logout" @click="logout">退出登录</button>
+    </div>
     
     <!-- 三卡片循环布局：左、中、右三个槽位，点击卡片触发循环 -->
     <div class="home-layout">
@@ -52,16 +59,20 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { logout as logoutApi } from '../api/auth.js'
 import SlotContent from '../components/HomeSlotContent.vue'
 import { getOpenMAICAppUrl } from '../config.js'
+import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
 
 const router = useRouter()
+const currentUser = getCurrentUser()
 
-// 顺序 [左, 中, 右]，初始：Channel左, Workshop中, Remain右
+// 顺序 [左, 中, 右]，初始：Channel左, Workshop中, OpenMAIC右
 const order = ref(['channel', 'workshop', 'remain'])
 const isAnimating = ref(false)
 const ROTATE_DELAY = 60
 const TRANSITION_DURATION = 320
+const userName = computed(() => getUserDisplayName(currentUser) || '未登录')
 
 const leftCard = computed(() => order.value[0])
 const centerCard = computed(() => order.value[1])
@@ -112,6 +123,12 @@ function handleSlotNavigate(card) {
     window.location.assign(getOpenMAICAppUrl())
   }
 }
+
+async function logout() {
+  await logoutApi().catch(() => null)
+  clearCurrentUser()
+  router.push('/login')
+}
 </script>
 
 <style scoped>
@@ -122,6 +139,48 @@ function handleSlotNavigate(card) {
   justify-content: center;
   padding: 24px;
   position: relative;
+}
+
+.account-bar {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-chip {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.account-label {
+  color: var(--text-secondary);
+}
+
+.account-logout {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.account-logout:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .home-bg {
@@ -231,6 +290,13 @@ function handleSlotNavigate(card) {
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .account-bar {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    justify-content: space-between;
+  }
+
   .home-layout {
     height: auto;
     min-height: 520px;

@@ -33,13 +33,18 @@
   box-sizing: border-box;
 }
 
-html, body {
+html {
   height: 100%;
+}
+
+body {
+  min-height: 100%;
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-y: auto;
 }
 
 #app {
@@ -50,6 +55,12 @@ html, body {
 .slide-enter-active,
 .slide-leave-active {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
 }
 
 .slide-enter-from {

@@ -1,5 +1,5 @@
 import { request } from './client.js'
-import { USE_MOCK } from '../config.js'
+import { USE_RANK_VIDEO_MOCK, USE_RANK_WEIBO_MOCK } from '../config.js'
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -94,7 +94,7 @@ const MOCK_MAIN_WEIBO = padWeiboList([
   { id: 8, title: 'Docker 容器化部署：从入门到生产环境。', viewsNum: '245891', tag: '' },
   { id: 9, title: 'TypeScript 进阶：类型系统与工程化实践。', viewsNum: '198562', tag: '' },
   { id: 10, title: 'Rust 编程入门：系统级语言从零到精通。', viewsNum: '156234', tag: '' },
-], { series: '本周新榜', topic: 'AI / 前端 / 工具', baseViews: 923847, stepViews: 32000 })
+], { series: '企业新榜', topic: 'AI / 前端 / 工具', baseViews: 923847, stepViews: 32000 })
 
 const MOCK_SUB_VIDEO = padVideoList(
   [
@@ -144,7 +144,7 @@ const MOCK_SUB_WEIBO = padWeiboList([
   { id: 8, title: '植物养护：室内绿植从养活到养好。', viewsNum: '268901', tag: '' },
   { id: 9, title: '手工 DIY：低成本改造出租屋。', viewsNum: '225634', tag: '' },
   { id: 10, title: '极简生活：断舍离与 minimalist 生活方式。', viewsNum: '198456', tag: '' },
-], { series: '热门推荐', topic: '生活方式', baseViews: 882104, stepViews: 28000 })
+], { series: '个人新榜', topic: '生活方式', baseViews: 882104, stepViews: 28000 })
 
 async function mockGet(path) {
   await delay(300)
@@ -157,25 +157,28 @@ async function mockGet(path) {
 
 /**
  * 获取排行榜 - 视频榜（创意精选 / 技能提升）
- * 始终使用本地 Mock：后端暂无真实视频榜数据，仅微博榜接 Crawl 服务。
  * @param {'main'|'sub'} board - main=创意精选，sub=技能提升（副榜视频列）
  * @returns {Promise<{ list: Array<{ id: number, title: string, views: string, coverUrl?: string }> }>}
  */
 export async function getRankVideo(board) {
   const path = `/api/ranks/${board}/video`
-  const res = await mockGet(path)
-  if (!res.data?.list) return Promise.reject(new Error('mock 数据异常'))
-  return { list: res.data.list }
+  if (USE_RANK_VIDEO_MOCK) {
+    const res = await mockGet(path)
+    return res.data?.list ? { list: res.data.list } : Promise.reject(new Error('mock 数据异常'))
+  }
+  const { ok, data } = await request(path)
+  if (!ok || !data?.list) throw new Error(data?.message || '获取榜单失败')
+  return data
 }
 
 /**
  * 获取排行榜 - 微博/话题榜
- * @param {'main'|'sub'} board - main=本周新榜，sub=热门推荐
+ * @param {'main'|'sub'} board - main=企业新榜，sub=个人新榜
  * @returns {Promise<{ list: Array<{ id: number, title: string, viewsNum: string, tag: string }> }>}
  */
 export async function getRankWeibo(board) {
   const path = `/api/ranks/${board}/weibo`
-  if (USE_MOCK) {
+  if (USE_RANK_WEIBO_MOCK) {
     const res = await mockGet(path)
     return res.data?.list ? { list: res.data.list } : Promise.reject(new Error('mock 数据异常'))
   }

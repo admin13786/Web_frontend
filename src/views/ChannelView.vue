@@ -1,20 +1,18 @@
 <template>
   <div class="channel-page">
     <div class="channel-header">
-      <router-link to="/home" class="back-link">← 返回主页</router-link>
+      <router-link to="/" class="back-link">← 返回主页</router-link>
       <div class="title-group">
-        <!-- 主榜在左时：频道排行榜大、副频道排行榜小（右下角） -->
         <template v-if="isMainRanking">
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToMain">频道排行榜</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToSub">副频道排行榜</span>
+            <h1 class="page-title title-main" @click="switchToMain">商业 · 行业</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToSub">开发者 · 技术</span>
           </div>
         </template>
-        <!-- 副榜在左时：副频道排行榜大、频道排行榜小（右下角），交换顺序 -->
         <template v-else>
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToSub">副频道排行榜</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToMain">频道排行榜</span>
+            <h1 class="page-title title-main" @click="switchToSub">开发者 · 技术</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToMain">商业 · 行业</span>
           </div>
         </template>
       </div>
@@ -33,7 +31,7 @@
     </div>
     <div v-else-if="loading" class="load-state">加载中…</div>
     <div v-else class="leaderboard-content" :class="{ 'is-sub': !isMainRanking }">
-      <!-- 主频道：创意精选（左）+ 本周新榜（右） -->
+      <!-- 主频道：创意精选（左）+ 企业新榜（右） -->
       <template v-if="isMainRanking">
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">创意精选</h3>
@@ -46,35 +44,52 @@
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
-              <p class="item-title">{{ item.title }}</p>
-              <div class="video-placeholder">
+              <p class="item-title" @click="openNewsUrl(item)">{{ item.title }}</p>
+              <div
+                class="video-placeholder"
+                role="button"
+                tabindex="0"
+                @click="openNewsUrl(item)"
+                @keydown.enter.prevent="openNewsUrl(item)"
+                @keydown.space.prevent="openNewsUrl(item)"
+              >
                 <div v-if="item.coverUrl" class="video-cover video-cover--thumb">
-                  <img class="cover-image" :src="item.coverUrl" :alt="item.title" loading="lazy" />
-                  <div class="cover-overlay">
-                    <span class="play-icon">▶</span>
-                    <span class="video-label">视频 {{ item.id }}</span>
-                  </div>
+                  <img
+                    class="cover-image"
+                    :src="item.coverUrl"
+                    :alt="item.title"
+                    loading="lazy"
+                    @error="onCoverError(item)"
+                    @load="onCoverLoad($event, item)"
+                  />
+                  <div class="cover-overlay" />
                 </div>
                 <div v-else class="video-cover">
-                  <span class="play-icon">▶</span>
-                  <span class="video-label">视频 {{ item.id }}</span>
+                  <span class="video-label">暂无封面</span>
                 </div>
               </div>
             </div>
             <div class="item-meta">
               <span class="item-rank" :class="{ 'rank-top': item.id <= 3 }">#{{ item.id }}</span>
-              <span class="item-views">{{ item.views }} 播放</span>
             </div>
           </div>
+          <button
+            v-if="mainPool.length"
+            type="button"
+            class="load-more-btn"
+            @click="loadMoreVideos"
+          >
+            随机加载更多
+          </button>
         </div>
 
         <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">本周新榜</h3>
+          <h3 class="column-title">商业 · 行业</h3>
           <div
             v-for="(item, index) in leftmostData"
             :key="'leftmost-' + item.id"
             class="weibo-rank-item"
-            @click="openNews(item)"
+            @click="openNewsUrl(item)"
             v-motion
             :initial="{ opacity: 0, y: 10 }"
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
@@ -82,20 +97,15 @@
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
               <span class="weibo-rank-title">{{ item.title }}</span>
-              <div class="weibo-rank-meta">
-                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
-                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
-              </div>
             </div>
             <div class="rank-actions" @click.stop>
               <button
                 type="button"
-                class="rank-action-btn"
-                :class="{ 'is-favorite': isFavorite(item?.newsId) }"
-                @click="favoriteNews(item)"
+                class="rank-action-btn rank-action-summary"
+                @click="summaryNews(item)"
                 :disabled="!item?.newsId"
               >
-                {{ isFavorite(item?.newsId) ? '已收藏' : '收藏' }}
+                概述
               </button>
               <button
                 type="button"
@@ -110,7 +120,7 @@
         </div>
       </template>
 
-      <!-- 副频道：技能提升（左）+ 热门推荐（右） -->
+      <!-- 副频道：技能提升（左）+ 个人新榜（右） -->
       <template v-else>
         <div class="side-column leaderboard-col video-column">
           <h3 class="column-title">技能提升</h3>
@@ -123,35 +133,52 @@
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
-              <p class="item-title">{{ item.title }}</p>
-              <div class="video-placeholder">
+              <p class="item-title" @click="openNewsUrl(item)">{{ item.title }}</p>
+              <div
+                class="video-placeholder"
+                role="button"
+                tabindex="0"
+                @click="openNewsUrl(item)"
+                @keydown.enter.prevent="openNewsUrl(item)"
+                @keydown.space.prevent="openNewsUrl(item)"
+              >
                 <div v-if="item.coverUrl" class="video-cover video-cover--thumb">
-                  <img class="cover-image" :src="item.coverUrl" :alt="item.title" loading="lazy" />
-                  <div class="cover-overlay">
-                    <span class="play-icon">▶</span>
-                    <span class="video-label">视频 {{ item.id }}</span>
-                  </div>
+                  <img
+                    class="cover-image"
+                    :src="item.coverUrl"
+                    :alt="item.title"
+                    loading="lazy"
+                    @error="onCoverError(item)"
+                    @load="onCoverLoad($event, item)"
+                  />
+                  <div class="cover-overlay" />
                 </div>
                 <div v-else class="video-cover">
-                  <span class="play-icon">▶</span>
-                  <span class="video-label">视频 {{ item.id }}</span>
+                  <span class="video-label">暂无封面</span>
                 </div>
               </div>
             </div>
             <div class="item-meta">
               <span class="item-rank" :class="{ 'rank-top': item.id <= 3 }">#{{ item.id }}</span>
-              <span class="item-views">{{ item.views }} 播放</span>
             </div>
           </div>
+          <button
+            v-if="subPool.length"
+            type="button"
+            class="load-more-btn"
+            @click="loadMoreVideos"
+          >
+            随机加载更多
+          </button>
         </div>
 
         <div class="side-column leaderboard-col weibo-column">
-          <h3 class="column-title">热门推荐</h3>
+          <h3 class="column-title">开发者 · 技术</h3>
           <div
             v-for="(item, index) in rightmostData"
             :key="'rightmost-' + item.id"
             class="weibo-rank-item"
-            @click="openNews(item)"
+            @click="openNewsUrl(item)"
             v-motion
             :initial="{ opacity: 0, y: 10 }"
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: (index + 3) * 0.05 } }"
@@ -159,20 +186,15 @@
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
               <span class="weibo-rank-title">{{ item.title }}</span>
-              <div class="weibo-rank-meta">
-                <span class="weibo-rank-count">{{ item.viewsNum }}</span>
-                <span v-if="item.tag" class="weibo-tag" :class="'tag-' + item.tag">{{ item.tag }}</span>
-              </div>
             </div>
             <div class="rank-actions" @click.stop>
               <button
                 type="button"
-                class="rank-action-btn"
-                :class="{ 'is-favorite': isFavorite(item?.newsId) }"
-                @click="favoriteNews(item)"
+                class="rank-action-btn rank-action-summary"
+                @click="summaryNews(item)"
                 :disabled="!item?.newsId"
               >
-                {{ isFavorite(item?.newsId) ? '已收藏' : '收藏' }}
+                概述
               </button>
               <button
                 type="button"
@@ -193,22 +215,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRankVideo, getRankWeibo } from '../api/rank.js'
-import { getNewsById } from '../mock/news.js'
-import { addFavorite, isFavorite as isFav } from '../api/favorites.js'
-import { OPENMAIC_BASE_URL, buildOpenMAICDialogPrefillHomeUrl } from '../config.js'
+import { getRankWeibo } from '../api/rank.js'
+import { getOpenMAICAppUrl, buildOpenMAICDialogPrefillHomeUrl } from '../config.js'
 
 const router = useRouter()
-
-function isFavorite(newsId) {
-  return isFav(newsId)
-}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-const isMainRanking = ref(true)
+const isMainRanking = ref(false)
 const leftData = ref([])
 const rightData = ref([])
 const leftmostData = ref([])
@@ -216,34 +232,162 @@ const rightmostData = ref([])
 const loading = ref(true)
 const loadError = ref('')
 const actionMessage = ref('')
+const LEFT_NEWS_COUNT = 10
+const LOAD_MORE_COUNT = 5
+const FALLBACK_COVER = '/favicon.svg'
+const DEFAULT_COVER_POOL = [
+  '/channel-covers/creative-rank-1.png',
+  '/channel-covers/creative-rank-2.png',
+  '/channel-covers/creative-rank-3.png',
+  '/channel-covers/creative-rank-4.png',
+  '/channel-covers/creative-rank-5.png',
+  '/channel-covers/skill-rank-1.png',
+  '/channel-covers/skill-rank-2.png',
+  '/channel-covers/skill-rank-3.png',
+  '/channel-covers/skill-rank-4.png',
+  '/channel-covers/skill-rank-5.png',
+]
+
+function shuffleArray(list) {
+  const out = [...list]
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+function formatWan(viewsNum) {
+  const n = Number(viewsNum)
+  if (!Number.isFinite(n)) return String(viewsNum ?? '')
+  if (n >= 10000) {
+    const wan = n / 10000
+    const s = wan.toFixed(1).replace(/\.0$/, '')
+    return `${s}万`
+  }
+  return String(n)
+}
+
+function pickDefaultCover(item) {
+  const id = Math.max(1, Number(item?.id || 1))
+  return DEFAULT_COVER_POOL[(id - 1) % DEFAULT_COVER_POOL.length] || FALLBACK_COVER
+}
+
+function buildCoverCandidates(item, fallbackCover) {
+  const candidates = []
+  if (item?.coverUrl) candidates.push(String(item.coverUrl))
+  candidates.push(fallbackCover || FALLBACK_COVER)
+  return [...new Set(candidates.filter(Boolean))]
+}
+
+function mapNewsForLeft(item) {
+  const fallbackCover = pickDefaultCover(item)
+  const coverCandidates = buildCoverCandidates(item, fallbackCover)
+  return {
+    ...item,
+    fallbackCover,
+    coverCandidates,
+    coverCandidateIndex: 0,
+    coverUrl: coverCandidates[0] || fallbackCover,
+    coverCheckDone: false,
+    viewsText: item?.viewsText || `${formatWan(item?.viewsNum)} 热度`,
+  }
+}
+
+function moveToNextCover(item) {
+  if (!item) return
+  const list = Array.isArray(item.coverCandidates) ? item.coverCandidates : []
+  if (!list.length) {
+    item.coverUrl = item.fallbackCover || FALLBACK_COVER
+    item.coverCheckDone = true
+    return
+  }
+  const cur = Number(item.coverCandidateIndex || 0)
+  const next = Math.min(cur + 1, list.length - 1)
+  item.coverCandidateIndex = next
+  item.coverUrl = list[next]
+  item.coverCheckDone = false
+}
+
+function onCoverError(item) {
+  if (!item) return
+  const retries = Number(item._coverRetries || 0)
+  if (retries < 2 && item.coverUrl && !item.coverUrl.startsWith('/')) {
+    item._coverRetries = retries + 1
+    const sep = item.coverUrl.includes('?') ? '&' : '?'
+    item.coverUrl = item.coverUrl.replace(/[?&]_r=\d+/, '') + `${sep}_r=${retries + 1}`
+    return
+  }
+  item._coverRetries = 0
+  moveToNextCover(item)
+}
+
+function onCoverLoad(_event, item) {
+  if (!item || item.coverCheckDone) return
+  item._coverRetries = 0
+  item.coverCheckDone = true
+}
 
 function openNews(item) {
   const newsId = item?.newsId
-  const url = item?.url || (newsId ? getNewsById(newsId)?.url : '')
+  if (newsId) {
+    const idStr = String(newsId).trim()
+    if (/^[0-9]+$/.test(idStr)) {
+      router.push(`/brief/${encodeURIComponent(idStr)}`)
+      return
+    }
+    const news = getNewsById(newsId)
+    if (news) {
+      router.push(`/news/${encodeURIComponent(newsId)}`)
+      return
+    }
+  }
+  const url = item?.url
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function openNewsUrl(item) {
+  const url = item?.url
   if (url) {
     window.open(url, '_blank', 'noopener,noreferrer')
     return
   }
-  if (!newsId) return
-  router.push(`/news/${encodeURIComponent(newsId)}`)
+  openNews(item)
 }
 
-function favoriteNews(item) {
+function summaryNews(item) {
   const newsId = item?.newsId
   if (!newsId) return
-  const news = getNewsById(newsId)
-  if (!news) return
-  addFavorite({
-    newsId: news.newsId,
-    title: news.title,
-    source: news.source,
-    url: news.url,
-    text: news.text,
-  })
-  actionMessage.value = '已加入收藏夹'
-  setTimeout(() => {
-    actionMessage.value = ''
-  }, 1800)
+  const idStr = String(newsId).trim()
+  if (/^[0-9]+$/.test(idStr)) {
+    router.push(`/brief/${encodeURIComponent(idStr)}`)
+  } else {
+    actionMessage.value = '该条新闻暂不支持概述'
+    setTimeout(() => { actionMessage.value = '' }, 2000)
+  }
+}
+
+const mainPool = ref([])
+const subPool = ref([])
+
+function loadMoreVideos() {
+  if (isMainRanking.value) {
+    const pool = mainPool.value
+    if (!pool.length) return
+    const batch = pool.splice(0, LOAD_MORE_COUNT)
+    const startId = leftData.value.length + 1
+    leftData.value.push(
+      ...batch.map((item, i) => mapNewsForLeft({ ...item, id: startId + i })),
+    )
+  } else {
+    const pool = subPool.value
+    if (!pool.length) return
+    const batch = pool.splice(0, LOAD_MORE_COUNT)
+    const startId = rightData.value.length + 1
+    rightData.value.push(
+      ...batch.map((item, i) => mapNewsForLeft({ ...item, id: startId + i })),
+    )
+  }
 }
 
 const explainLoading = ref(false)
@@ -254,12 +398,8 @@ async function explainNews(item) {
   const title = item?.title
   if (!title) return
 
-  const baseUrl = OPENMAIC_BASE_URL.trim() || 'http://localhost:3000'
-  if (!OPENMAIC_BASE_URL.trim()) {
-    console.warn(
-      '[OpenMAIC] VITE_OPENMAIC_BASE_URL 未配置，讲解跳转使用 http://localhost:3000；请在 .env 中配置',
-    )
-  }
+  // 整页跳转必须直接访问 OpenMAIC（不能走 Nginx 代理，否则 302 重定向路径会错）
+  const appUrl = getOpenMAICAppUrl()
 
   explainLoading.value = true
   explainError.value = ''
@@ -267,7 +407,7 @@ async function explainNews(item) {
   actionMessage.value = `正在通过 OpenMAIC 预填讲解「${title}」…`
 
   try {
-    const url = buildOpenMAICDialogPrefillHomeUrl(baseUrl, title)
+    const url = buildOpenMAICDialogPrefillHomeUrl(appUrl, title)
     await sleep(200)
     window.location.href = url
   } catch (e) {
@@ -293,15 +433,20 @@ async function fetchAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [mainVideo, mainWeibo, subVideo, subWeibo] = await Promise.all([
-      getRankVideo('main'),
+    const [mainWeibo, subWeibo] = await Promise.all([
       getRankWeibo('main'),
-      getRankVideo('sub'),
       getRankWeibo('sub'),
     ])
-    leftData.value = mainVideo.list || []
+    const shuffledMain = shuffleArray(mainWeibo.list || [])
+    const mainLeftItems = shuffledMain.slice(0, LEFT_NEWS_COUNT)
+    leftData.value = mainLeftItems.map((item) => mapNewsForLeft(item))
+    mainPool.value = shuffledMain.slice(LEFT_NEWS_COUNT)
     leftmostData.value = mainWeibo.list || []
-    rightData.value = subVideo.list || []
+
+    const shuffledSub = shuffleArray(subWeibo.list || [])
+    const subLeftItems = shuffledSub.slice(0, LEFT_NEWS_COUNT)
+    rightData.value = subLeftItems.map((item) => mapNewsForLeft(item))
+    subPool.value = shuffledSub.slice(LEFT_NEWS_COUNT)
     rightmostData.value = subWeibo.list || []
   } catch (e) {
     loadError.value = e.message || '加载排行榜失败，请稍后重试'
@@ -478,6 +623,7 @@ onMounted(fetchAll)
   font-size: 1rem;
   line-height: 1.6;
   margin-bottom: 16px;
+  cursor: pointer;
 }
 
 .video-placeholder {
@@ -486,6 +632,7 @@ onMounted(fetchAll)
   background: rgba(0, 0, 0, 0.3);
   border-radius: var(--radius-sm);
   overflow: hidden;
+  cursor: pointer;
 }
 
 .video-cover {
@@ -622,9 +769,8 @@ onMounted(fetchAll)
   transform: translateY(-1px);
 }
 
-.rank-action-btn.is-favorite {
-  background: rgba(99, 102, 241, 0.22);
-  border-color: rgba(99, 102, 241, 0.6);
+.rank-action-summary {
+  background: rgba(34, 197, 94, 0.12);
   color: var(--text-primary);
 }
 
@@ -714,6 +860,40 @@ onMounted(fetchAll)
 .weibo-tag.tag-首发 {
   background: #38bdf8;
   color: white;
+}
+
+.weibo-tag.tag-速览 {
+  background: #f59e0b;
+  color: white;
+}
+
+.weibo-tag.tag-AI {
+  background: #8b5cf6;
+  color: white;
+}
+
+.load-more-btn {
+  width: 100%;
+  padding: 14px 0;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--text-primary);
+  border: 1px dashed rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-lg);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.load-more-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.6);
+  transform: translateY(-1px);
+}
+
+.load-more-btn:active {
+  transform: translateY(0);
 }
 
 /* 响应式 */

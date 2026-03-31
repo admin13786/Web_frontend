@@ -8,6 +8,12 @@ export const USE_MOCK =
   import.meta.env.VITE_USE_MOCK === 'true' ||
   (import.meta.env.VITE_USE_MOCK !== 'false' && !import.meta.env.VITE_API_BASE)
 
+/** 视频榜默认 Mock；仅 VITE_RANK_VIDEO_MOCK=false 时请求 /api/ranks/.../video */
+export const USE_RANK_VIDEO_MOCK = import.meta.env.VITE_RANK_VIDEO_MOCK !== 'false'
+
+/** 微博/话题榜：与通用 USE_MOCK 解耦，默认走真实接口（仅 VITE_RANK_WEIBO_MOCK=true 时用 Mock） */
+export const USE_RANK_WEIBO_MOCK = import.meta.env.VITE_RANK_WEIBO_MOCK === 'true'
+
 // OpenMAIC 服务基地址，用于调用：
 // POST {OPENMAIC_BASE_URL}/api/generate-classroom
 // GET  {OPENMAIC_BASE_URL}/api/generate-classroom/:jobId
@@ -25,6 +31,9 @@ export function getOpenMAICAppUrl() {
   if (explicit) return explicit
   const base = String(OPENMAIC_BASE_URL || '').trim()
   if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:3000`
+  }
   return 'http://localhost:3000'
 }
 
