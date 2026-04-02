@@ -24,8 +24,8 @@ jobs:
           script: |
             set -euo pipefail
 
-            FRONTEND_DIR="$HOME/FrontEnd-0317"
-            BACKEND_DIR="$HOME/Backend"
+            FRONTEND_DIR="${FRONTEND_DIR:-$HOME/FrontEnd}"
+            BACKEND_DIR="${BACKEND_DIR:-$HOME/Backend}"
             BACKEND_RUNTIME_BACKUP="/tmp/backend-crawl-runtime-backup"
 
             for dir in "$FRONTEND_DIR" "$BACKEND_DIR"; do
@@ -75,7 +75,22 @@ jobs:
               git fetch origin "$branch"
               git checkout "$branch"
               git reset --hard "origin/$branch"
-              git clean -fd
+              if [ "$mode" = "backend" ]; then
+                git clean -fd \
+                  -e Crawl/db \
+                  -e Crawl/logs \
+                  -e WorkShop/.env \
+                  -e WorkShop/metrics.db \
+                  -e WorkShop/metrics.db-shm \
+                  -e WorkShop/metrics.db-wal \
+                  -e OpenMAIC/.env.local \
+                  -e Agent-Do/data
+              else
+                git clean -fd \
+                  -e .env \
+                  -e .env.local \
+                  -e .env.production.local
+              fi
 
               if [ "$mode" = "backend" ]; then
                 restore_backend_runtime
@@ -88,8 +103,10 @@ jobs:
             sync_repo "$FRONTEND_DIR" main plain
 
             docker compose -f "$BACKEND_DIR/Crawl/docker-compose.yml" up -d --build --remove-orphans
+            export AGENT_DATA_HOST_ROOT="${AGENT_DATA_HOST_ROOT:-$BACKEND_DIR/Agent-Do/data}"
+            docker compose -f "$BACKEND_DIR/WorkShop/docker-compose.yml" up -d --build --remove-orphans
             docker compose -f "$BACKEND_DIR/OpenMAIC/docker-compose.yml" up -d --build --remove-orphans
             docker compose -f "$FRONTEND_DIR/docker-compose.yml" up -d --build --remove-orphans
 
-            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "frontend|Crawl|openmaic|NAME"
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "frontend|Crawl|openmaic|Workshop|agent-do|NAME"
             echo "Full stack deployed at $(date -Is)"

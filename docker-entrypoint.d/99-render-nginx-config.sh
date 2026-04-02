@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+: "${NGINX_API_UPSTREAM_HOST:=host.docker.internal}"
+: "${NGINX_API_UPSTREAM_PORT:=8000}"
+: "${NGINX_WORKSHOP_UPSTREAM_HOST:=host.docker.internal}"
+: "${NGINX_WORKSHOP_UPSTREAM_PORT:=5000}"
+
+envsubst '${NGINX_API_UPSTREAM_HOST} ${NGINX_API_UPSTREAM_PORT} ${NGINX_WORKSHOP_UPSTREAM_HOST} ${NGINX_WORKSHOP_UPSTREAM_PORT}' \
+  < /etc/nginx/templates/default.conf.template \
+  > /etc/nginx/conf.d/default.conf

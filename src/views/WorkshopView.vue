@@ -133,8 +133,24 @@
         </div>
       </div>
 
-      <div class="messages" ref="messagesEl">
-        <div v-if="messages.length === 0" class="empty-hint">
+      <div class="messages" ref="messagesEl" @scroll="onMessagesScroll">
+        <!-- 流式状态摘要栏 -->
+        <div v-if="busy" class="stream-status-bar">
+          <div class="stream-status-left">
+            <span class="stream-status-dot-anim"></span>
+            <span class="stream-status-phase">{{ streamStatusPhase }}</span>
+          </div>
+          <div class="stream-status-center">
+            <span v-if="completedStepsCount > 0" class="stream-status-steps">步骤 {{ completedStepsCount }}/{{ totalStepsEstimate }}</span>
+            <div class="stream-status-progress-track">
+              <div class="stream-status-progress-fill" :style="{ width: overallProgress + '%' }"></div>
+            </div>
+          </div>
+          <div class="stream-status-right">
+            <span class="stream-status-elapsed">{{ formattedElapsed }}</span>
+          </div>
+        </div>
+        <div v-if="messages.length === 0 && !busy" class="empty-hint">
           <p>发送消息开始与 Agent 对话</p>
         </div>
         <div v-for="(msg, i) in messages" :key="msg.key" class="message" :class="msg.role">
@@ -152,7 +168,14 @@
             <!-- assistant：流式阶段绑定顶层 ref，避免嵌套对象不触发视图更新 -->
             <template v-else>
               <template v-if="msg.streamingLive">
-                <template v-if="streamingHtml">
+                <template v-if="streamingSegments.length">
+                  <template v-for="(seg, si) in streamingSegments" :key="`live-${si}`">
+                    <div v-if="seg.kind === 'text'" class="agent-text">
+                      <MarkdownView :content="seg.content" mode="dark" />
+                    </div>
+                  </template>
+                </template>
+                <template v-else-if="streamingHtml">
                   <WorkshopStreamProgress
                     :phase="2"
                     :char-count="streamingHtml.length"
@@ -218,6 +241,20 @@
           </div>
         </div>
       </div>
+      <Transition name="scroll-btn">
+        <button
+          v-if="userScrolledUp"
+          type="button"
+          class="scroll-to-bottom-btn"
+          @click="forceScrollBottom"
+          title="回到底部"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span v-if="newChunksWhileScrolledUp" class="scroll-btn-badge">有新内容</span>
+        </button>
+      </Transition>
 
       <div class="input-area">
         <textarea
@@ -251,6 +288,30 @@
       <div class="results-header">
         <span class="results-title">成果展示</span>
         <div class="header-actions">
+          <button
+            class="icon-btn"
+            :class="{ 'icon-btn--active': showWorkspaceFiles }"
+            title="切换文件目录"
+            @click="toggleWorkspaceFiles"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            </svg>
+          </button>
+          <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="查看沙箱池状态" @click="toggleSandboxPool">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="4" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="15" width="7" height="7" rx="1.5"/>
+              <path d="M17.5 15v6M14.5 18h6"/>
+            </svg>
+          </button>
+          <button class="icon-btn" :class="{ 'icon-btn--active': showAgentDoDebug }" title="切换 Agent-Do 调试信息" @click="toggleAgentDoDebug">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </button>
           <span v-if="previewMode !== 'empty'" class="mode-tag">{{ previewMode === 'html' ? '预览' : previewMode === 'url' ? 'URL' : previewCode.lang }}</span>
           <button v-if="previewMode === 'html' || previewMode === 'url'" class="icon-btn" title="刷新预览" @click="iframeKey++; urlLoadError = false">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -258,11 +319,215 @@
         </div>
       </div>
 
-      <div class="results-content">
-        <div v-if="previewMode === 'empty'" class="results-empty">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-          <p v-if="busy">{{ loading ? '正在上传，完成后即可预览…' : '正在生成，全部完成后将在此展示预览…' }}</p>
-          <p v-else>成果将在这里展示</p>
+      <div class="results-content" :class="{ 'results-content--with-files': showWorkspaceFiles }">
+        <aside v-if="showWorkspaceFiles" class="workspace-browser">
+          <div class="workspace-browser-header">
+            <div>
+              <div class="workspace-browser-title">文件目录</div>
+              <div class="workspace-browser-subtitle">{{ workspaceBrowserSubtitle }}</div>
+            </div>
+            <button type="button" class="workspace-refresh-btn" :disabled="workspaceTreeLoading" @click="loadWorkspaceTree(true)">
+              {{ workspaceTreeLoading ? '刷新中' : '刷新' }}
+            </button>
+          </div>
+          <div v-if="workspaceTreeError" class="workspace-browser-error">{{ workspaceTreeError }}</div>
+          <div v-else-if="workspaceTreeLoading && !workspaceTreeRoot" class="workspace-browser-empty">正在加载文件目录…</div>
+          <div v-else-if="!workspaceFlatNodes.length" class="workspace-browser-empty">当前会话还没有可浏览的文件。</div>
+          <div v-else class="workspace-tree">
+            <button
+              v-for="node in workspaceFlatNodes"
+              :key="node.path || `dir-${node.name}`"
+              type="button"
+              class="workspace-tree-node"
+              :class="[
+                `node-${node.type}`,
+                {
+                  'is-selected': workspaceSelectedFile.path === node.path,
+                  'is-directory-open': node.type === 'directory' && isDirectoryExpanded(node.path),
+                },
+              ]"
+              :style="{ paddingLeft: `${14 + node.depth * 18}px` }"
+              @click="handleWorkspaceNodeClick(node)"
+            >
+              <span class="workspace-tree-caret">
+                <svg
+                  v-if="node.type === 'directory'"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  :class="{ open: isDirectoryExpanded(node.path) }"
+                >
+                  <polyline points="8 4 16 12 8 20"/>
+                </svg>
+              </span>
+              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '📁' : fileIcon(node.path) }}</span>
+              <span class="workspace-tree-label">{{ node.name }}</span>
+            </button>
+          </div>
+        </aside>
+
+        <div class="results-main">
+          <div v-if="showWorkspaceFiles" class="results-tabs">
+            <button
+              type="button"
+              class="results-tab"
+              :class="{ active: workspaceActiveView === 'preview' }"
+              @click="workspaceActiveView = 'preview'"
+            >
+              预览
+            </button>
+            <button
+              v-if="workspaceSelectedFile.path"
+              type="button"
+              class="results-tab"
+              :class="{ active: workspaceActiveView === 'file' }"
+              @click="workspaceActiveView = 'file'"
+            >
+              {{ workspaceSelectedFile.name || workspaceSelectedFile.path }}
+            </button>
+          </div>
+
+          <div v-if="showWorkspaceFiles && workspaceActiveView === 'file'" class="file-viewer">
+            <div class="file-viewer-header">
+              <div>
+                <div class="file-viewer-title">{{ workspaceSelectedFile.name || '选择文件' }}</div>
+                <div class="file-viewer-subtitle">{{ workspaceSelectedFile.path || '从左侧文件目录中选择一个文件以查看内容。' }}</div>
+              </div>
+              <button
+                v-if="workspaceSelectedFile.path"
+                type="button"
+                class="workspace-refresh-btn"
+                :disabled="workspaceFileLoading"
+                @click="loadWorkspaceFile(workspaceSelectedFile.path, true)"
+              >
+                {{ workspaceFileLoading ? '加载中' : '重新读取' }}
+              </button>
+            </div>
+            <div v-if="workspaceFileError" class="file-viewer-error">{{ workspaceFileError }}</div>
+            <div v-else-if="workspaceFileLoading" class="file-viewer-empty">正在读取文件内容…</div>
+            <div v-else-if="workspaceSelectedFile.binary" class="file-viewer-empty">该文件是二进制内容，当前仅支持文本预览。</div>
+            <div v-else-if="workspaceSelectedFile.content" class="file-viewer-body">
+              <div v-if="workspaceSelectedFile.truncated" class="file-viewer-notice">文件较大，当前仅展示前 256 KB 内容。</div>
+              <pre class="file-viewer-code"><code>{{ workspaceSelectedFile.content }}</code></pre>
+            </div>
+            <div v-else class="file-viewer-empty">从左侧文件目录中选择一个文件以查看内容。</div>
+          </div>
+
+          <template v-else>
+        <div v-if="showSandboxPool" class="sandbox-pool-panel">
+          <div class="sandbox-pool-header">
+            <div>
+              <div class="sandbox-pool-title">沙箱池状态</div>
+              <div class="sandbox-pool-subtitle">活跃 {{ sandboxPool.activeCount }} / {{ sandboxPool.maxContainers }}，空闲回收 {{ formatIdleTtl(sandboxPool.idleTtlMs) }}</div>
+            </div>
+            <button type="button" class="sandbox-pool-refresh" :disabled="sandboxPoolLoading" @click="loadSandboxPool">
+              {{ sandboxPoolLoading ? '刷新中' : '刷新' }}
+            </button>
+          </div>
+          <div v-if="sandboxPoolError" class="sandbox-pool-error">{{ sandboxPoolError }}</div>
+          <div class="sandbox-pool-grid">
+            <div class="sandbox-pool-card">
+              <div class="sandbox-pool-card-title">当前活跃容器</div>
+              <div v-if="sandboxPool.activeSandboxes.length" class="sandbox-pool-list">
+                <div v-for="item in sandboxPool.activeSandboxes" :key="`${item.username}-${item.conversationId}`" class="sandbox-pool-item">
+                  <div class="sandbox-pool-item-title">{{ item.username }} / {{ item.conversationId }}</div>
+                  <div class="sandbox-pool-item-meta">{{ item.containerName }} · {{ item.kind }} · 端口 {{ item.port }}</div>
+                  <div class="sandbox-pool-item-meta">最近访问 {{ formatPoolTime(item.lastAccessedAt) }}</div>
+                </div>
+              </div>
+              <div v-else class="sandbox-pool-empty">当前没有活跃沙箱</div>
+            </div>
+            <div class="sandbox-pool-card">
+              <div class="sandbox-pool-card-title">最近回收记录</div>
+              <div v-if="sandboxPool.reclaimedSandboxes.length" class="sandbox-pool-list">
+                <div v-for="item in sandboxPool.reclaimedSandboxes" :key="`${item.workspacePath}-${item.reclaimedAt}`" class="sandbox-pool-item">
+                  <div class="sandbox-pool-item-title">{{ item.username }} / {{ item.conversationId }}</div>
+                  <div class="sandbox-pool-item-meta">{{ formatReclaimReason(item.reclaimReason) }}</div>
+                  <div class="sandbox-pool-item-meta">回收于 {{ formatPoolTime(item.reclaimedAt) }}</div>
+                </div>
+              </div>
+              <div v-else class="sandbox-pool-empty">暂时没有回收记录</div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="showAgentDoDebug" class="debug-panel">
+          <div class="debug-panel-header">
+            <span class="debug-panel-title">Agent-Do 调试信息</span>
+          </div>
+          <div class="debug-grid">
+            <div class="debug-item">
+              <div class="debug-label">Request Payload</div>
+              <pre class="debug-value"><code>{{ requestPayloadText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">Phase Timing</div>
+              <pre class="debug-value"><code>{{ phaseTimingText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">Event Timeline</div>
+              <pre class="debug-value"><code>{{ timelineText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">当前会话 ID</div>
+              <pre class="debug-value"><code>{{ agentDoDebug.sessionId || '-' }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">当前工作目录</div>
+              <pre class="debug-value"><code>{{ agentDoDebug.workspacePath || '-' }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">正在执行的工具</div>
+              <pre class="debug-value"><code>{{ activeToolsText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">工具输入/输出</div>
+              <pre class="debug-value"><code>{{ toolLogsText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">文本增量</div>
+              <pre class="debug-value"><code>{{ agentDoDebug.textDelta || '-' }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">todo 列表</div>
+              <pre class="debug-value"><code>{{ todoText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">权限请求</div>
+              <pre class="debug-value"><code>{{ permissionText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">最终预览 URL</div>
+              <pre class="debug-value"><code>{{ agentDoDebug.previewUrl || '-' }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">最近一次错误</div>
+              <pre class="debug-value"><code>{{ agentDoDebug.lastError || '-' }}</code></pre>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="previewMode === 'empty'" class="results-empty">
+          <div class="preview-waiting-shell" :class="{ 'is-busy': busy }">
+            <div class="preview-waiting-orb">
+              <div class="preview-waiting-ring"></div>
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <rect x="3" y="3" width="18" height="18" rx="3"/>
+                <path d="M3 8.5h18"/>
+                <path d="M8.5 21V8.5"/>
+              </svg>
+            </div>
+            <div class="preview-waiting-title">{{ busy ? '预览准备中' : '成果展示区' }}</div>
+            <div class="preview-waiting-text">
+              {{ busy ? previewWaitingText : '生成后的网页、代码或链接会显示在这里。' }}
+            </div>
+            <div v-if="busy" class="preview-waiting-tips">
+              <span>生成代码</span>
+              <span>启动服务</span>
+              <span>校验预览</span>
+            </div>
+          </div>
         </div>
         <iframe
           v-else-if="previewMode === 'html'"
@@ -270,8 +535,19 @@
           :srcdoc="previewHtml"
           class="preview-iframe"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          @load="handlePreviewLoad"
         ></iframe>
         <div v-else-if="previewMode === 'url'" class="url-preview">
+          <div class="preview-status-bar" :class="`status-${previewStatus.kind}`">
+            <div class="preview-status-main">
+              <span class="preview-status-dot"></span>
+              <div>
+                <div class="preview-status-title">{{ previewStatus.title }}</div>
+                <div class="preview-status-subtitle">{{ previewStatus.subtitle }}</div>
+              </div>
+            </div>
+            <span class="preview-status-chip">{{ previewStatus.chip }}</span>
+          </div>
           <div class="url-bar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             <span class="url-text">{{ previewUrl }}</span>
@@ -286,8 +562,8 @@
             :src="previewUrl"
             class="preview-iframe"
             tabindex="0"
-            @load="$event.target.focus()"
-            @error="urlLoadError = true"
+            @load="handlePreviewLoad($event)"
+            @error="handlePreviewError"
           ></iframe>
           <div v-else class="url-fallback">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -304,6 +580,8 @@
           </div>
           <pre class="code-preview-body"><code>{{ previewCode.content }}</code></pre>
         </div>
+          </template>
+        </div>
       </div>
     </div>
     </div>
@@ -314,7 +592,15 @@
 import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
-import { streamGenerate, uploadHTML } from '../api/workshop.js'
+import {
+  fetchAgentDoSandboxPool,
+  fetchAgentDoWorkspaceFile,
+  fetchAgentDoWorkspaceTree,
+  normalizeWorkshopPreviewUrl,
+  streamGenerate,
+  streamPreviewWithAgentDo,
+  uploadHTML,
+} from '../api/workshop.js'
 import {
   deleteWorkshopConversation,
   fetchWorkshopConversations,
@@ -349,7 +635,7 @@ function onDrag(e) {
   if (!dragging || !workshopEl.value) return
   const total = workshopEl.value.offsetWidth
   const delta = ((e.clientX - startX) / total) * 100
-  leftWidth.value = Math.min(40, Math.max(20, startW + delta))
+  leftWidth.value = Math.min(60, Math.max(25, startW + delta))
 }
 function stopDrag() {
   dragging = false
@@ -371,6 +657,7 @@ const inputText = ref('')
 const streamingFriendly = ref('')
 /** SSE：HTML 源码（转义后展示） */
 const streamingHtml = ref('')
+const streamingSegments = ref([])
 /** 整段请求进行中（含 SSE 与上传），用于禁用发送避免重复提交 */
 const busy = ref(false)
 /** 仅用于底部「打字点」：首包前的等待、上传阶段 */
@@ -394,9 +681,888 @@ const previewCode = ref({ lang: '', content: '' })
 const iframeKey = ref(0)
 const codeCopied = ref(false)
 const urlLoadError = ref(false)
+const previewFrameState = ref('idle')
+const showAgentDoDebug = ref(false)
+const showSandboxPool = ref(false)
+const showWorkspaceFiles = ref(false)
+const agentDoDebug = ref({
+  requestPayload: null,
+  timeline: [],
+  requestStartedAt: 0,
+  firstEventAt: 0,
+  requestCompletedAt: 0,
+  stageMarks: {},
+  sessionId: '',
+  workspacePath: '',
+  activeTools: [],
+  toolLogs: [],
+  textDelta: '',
+  todos: [],
+  permissions: [],
+  previewUrl: '',
+  lastError: '',
+})
+const agentDoLive = ref({
+  steps: [],
+  reasoning: '',
+  answer: '',
+})
+const sandboxPoolLoading = ref(false)
+const sandboxPoolError = ref('')
+const sandboxPool = ref({
+  runtimeRoot: '',
+  activeCount: 0,
+  maxContainers: 0,
+  idleTtlMs: 0,
+  activeSandboxes: [],
+  reclaimedSandboxes: [],
+})
+const workspaceActiveView = ref('preview')
+const workspaceTreeLoading = ref(false)
+const workspaceTreeError = ref('')
+const workspaceTreeRoot = ref(null)
+const workspaceExpandedDirs = ref([''])
+const workspaceFileLoading = ref(false)
+const workspaceFileError = ref('')
+const workspaceSelectedFile = ref({
+  path: '',
+  name: '',
+  content: '',
+  binary: false,
+  truncated: false,
+  size: 0,
+})
+
+const currentWorkspaceRequest = computed(() => {
+  const username = currentUser.value?.username || 'workshop_guest'
+  const conversationId = currentConversationId.value || ''
+  return {
+    username,
+    conversationId,
+    ready: Boolean(username && conversationId),
+  }
+})
+
+const workspaceBrowserSubtitle = computed(() => {
+  if (workspaceTreeLoading.value) return '正在同步会话 workspace'
+  if (workspaceTreeRoot.value) return '点击目录展开，点击文件查看内容'
+  return '当前会话的 Agent-Do 工作目录'
+})
+
+const workspaceFlatNodes = computed(() => {
+  const root = workspaceTreeRoot.value
+  if (!root) return []
+
+  const nodes = []
+  const walk = (node, depth = 0) => {
+    if (node.path || depth > 0) {
+      nodes.push({
+        ...node,
+        depth,
+      })
+    }
+    if (node.type !== 'directory') return
+    if (depth > 0 && !isDirectoryExpanded(node.path)) return
+    for (const child of node.children || []) {
+      walk(child, depth + (depth > 0 ? 1 : 0))
+    }
+  }
+
+  walk(root, 0)
+  return nodes
+})
+
+function resetWorkspaceBrowser() {
+  workspaceTreeLoading.value = false
+  workspaceTreeError.value = ''
+  workspaceTreeRoot.value = null
+  workspaceExpandedDirs.value = ['']
+  workspaceFileLoading.value = false
+  workspaceFileError.value = ''
+  workspaceSelectedFile.value = {
+    path: '',
+    name: '',
+    content: '',
+    binary: false,
+    truncated: false,
+    size: 0,
+  }
+  workspaceActiveView.value = 'preview'
+}
+
+function isDirectoryExpanded(path) {
+  return workspaceExpandedDirs.value.includes(path || '')
+}
+
+function toggleDirectoryExpanded(path) {
+  const key = path || ''
+  if (isDirectoryExpanded(key)) {
+    workspaceExpandedDirs.value = workspaceExpandedDirs.value.filter((item) => item !== key)
+  } else {
+    workspaceExpandedDirs.value = [...workspaceExpandedDirs.value, key]
+  }
+}
+
+function fileIcon(path) {
+  const lower = String(path || '').toLowerCase()
+  if (lower.endsWith('.html')) return '🌐'
+  if (lower.endsWith('.css')) return '🎨'
+  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return '🟨'
+  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return '🟦'
+  if (lower.endsWith('.json')) return '🧩'
+  if (lower.endsWith('.md')) return '📝'
+  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg')) return '🖼️'
+  return '📄'
+}
+
+function findFirstFileNode(node) {
+  if (!node) return null
+  if (node.type === 'file') return node
+  for (const child of node.children || []) {
+    const found = findFirstFileNode(child)
+    if (found) return found
+  }
+  return null
+}
+
+async function loadWorkspaceTree(force = false) {
+  if (!currentWorkspaceRequest.value.ready) return
+  if (workspaceTreeLoading.value) return
+  if (workspaceTreeRoot.value && !force) return
+
+  workspaceTreeLoading.value = true
+  workspaceTreeError.value = ''
+  try {
+    const data = await fetchAgentDoWorkspaceTree(currentWorkspaceRequest.value)
+    workspaceTreeRoot.value = data?.root || null
+    const rootChildren = Array.isArray(data?.root?.children) ? data.root.children : []
+    workspaceExpandedDirs.value = ['']
+    for (const child of rootChildren) {
+      if (child?.type === 'directory') {
+        workspaceExpandedDirs.value.push(child.path || '')
+      }
+    }
+
+    const stillSelected = workspaceSelectedFile.value.path
+      ? workspaceFlatNodes.value.find((item) => item.path === workspaceSelectedFile.value.path)
+      : null
+    if (stillSelected?.type === 'file') {
+      await loadWorkspaceFile(stillSelected.path, true)
+    } else if (!workspaceSelectedFile.value.path) {
+      const firstFile = findFirstFileNode(data?.root)
+      if (firstFile?.path) {
+        await loadWorkspaceFile(firstFile.path)
+      }
+    }
+  } catch (error) {
+    workspaceTreeError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    workspaceTreeLoading.value = false
+  }
+}
+
+async function loadWorkspaceFile(path, force = false) {
+  const nextPath = String(path || '').trim()
+  if (!currentWorkspaceRequest.value.ready || !nextPath) return
+  if (workspaceFileLoading.value && workspaceSelectedFile.value.path === nextPath) return
+  if (!force && workspaceSelectedFile.value.path === nextPath && workspaceSelectedFile.value.content) {
+    workspaceActiveView.value = 'file'
+    return
+  }
+
+  workspaceFileLoading.value = true
+  workspaceFileError.value = ''
+  workspaceActiveView.value = 'file'
+  try {
+    const data = await fetchAgentDoWorkspaceFile({
+      ...currentWorkspaceRequest.value,
+      path: nextPath,
+    })
+    workspaceSelectedFile.value = {
+      path: data?.path || nextPath,
+      name: data?.name || nextPath.split('/').pop() || nextPath,
+      content: typeof data?.content === 'string' ? data.content : '',
+      binary: Boolean(data?.binary),
+      truncated: Boolean(data?.truncated),
+      size: Number(data?.size || 0),
+    }
+  } catch (error) {
+    workspaceFileError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    workspaceFileLoading.value = false
+  }
+}
+
+function handleWorkspaceNodeClick(node) {
+  if (!node) return
+  if (node.type === 'directory') {
+    toggleDirectoryExpanded(node.path)
+    return
+  }
+  loadWorkspaceFile(node.path)
+}
+
+async function toggleWorkspaceFiles() {
+  showWorkspaceFiles.value = !showWorkspaceFiles.value
+  if (!showWorkspaceFiles.value) return
+  showSandboxPool.value = false
+  showAgentDoDebug.value = false
+  await loadWorkspaceTree()
+}
+
+// ── Smart auto-scroll ──────────────────────────────────────────
+const userScrolledUp = ref(false)
+const newChunksWhileScrolledUp = ref(false)
+const SCROLL_THRESHOLD = 80
+
+function isNearBottom() {
+  const el = messagesEl.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD
+}
+
+function onMessagesScroll() {
+  if (!busy.value) {
+    userScrolledUp.value = false
+    newChunksWhileScrolledUp.value = false
+    return
+  }
+  userScrolledUp.value = !isNearBottom()
+  if (!userScrolledUp.value) {
+    newChunksWhileScrolledUp.value = false
+  }
+}
+
+function forceScrollBottom() {
+  userScrolledUp.value = false
+  newChunksWhileScrolledUp.value = false
+  nextTick(() => {
+    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
+}
+
+// ── Elapsed timer ──────────────────────────────────────────────
+const streamStartTime = ref(0)
+const elapsedSeconds = ref(0)
+let elapsedTimer = null
+
+function startElapsedTimer() {
+  streamStartTime.value = Date.now()
+  elapsedSeconds.value = 0
+  if (elapsedTimer) clearInterval(elapsedTimer)
+  elapsedTimer = setInterval(() => {
+    elapsedSeconds.value = Math.floor((Date.now() - streamStartTime.value) / 1000)
+  }, 1000)
+}
+
+function stopElapsedTimer() {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
+const formattedElapsed = computed(() => {
+  const s = elapsedSeconds.value
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return r ? `${m}m ${r}s` : `${m}m`
+})
+
+// ── Overall progress tracking ──────────────────────────────────
+const completedStepsCount = computed(() => {
+  const steps = agentDoLive.value.steps.filter(s => s.stage === 'result').length
+  const completedTools = agentDoDebug.value.toolLogs.filter(t => t.status === 'completed').length
+  return steps + completedTools
+})
+
+const totalStepsEstimate = computed(() => {
+  const base = agentDoLive.value.steps.length
+  const totalTools = agentDoDebug.value.toolLogs.length
+  const pending = agentDoDebug.value.toolLogs.filter(t => t.status === 'running' || t.status === 'pending').length
+  const total = base + totalTools + pending
+  return Math.max(total, completedStepsCount.value + 1, 3)
+})
+
+const overallProgress = computed(() => {
+  if (!busy.value) return 0
+  const total = totalStepsEstimate.value
+  if (total <= 0) return 5
+  const raw = Math.round((completedStepsCount.value / total) * 100)
+  return Math.max(5, Math.min(95, raw))
+})
+
+const streamStatusPhase = computed(() => {
+  if (!busy.value) return ''
+  const lastStep = agentDoLive.value.steps[agentDoLive.value.steps.length - 1]
+  if (lastStep?.content) return lastStep.content
+  const runningTools = agentDoDebug.value.toolLogs.filter(t => t.status === 'running')
+  if (runningTools.length) return `正在执行: ${runningTools.map(t => t.title).join(', ')}`
+  if (loading.value) return '正在准备…'
+  return 'Agent-Do 正在处理'
+})
+
+const agentDoStepItems = computed(() => agentDoLive.value.steps.slice(-8))
+const visibleToolLogs = computed(() => {
+  const priority = { running: 0, pending: 1, error: 2, completed: 3 }
+  return [...agentDoDebug.value.toolLogs]
+    .sort((left, right) => {
+      const leftScore = priority[left.status] ?? 9
+      const rightScore = priority[right.status] ?? 9
+      if (leftScore !== rightScore) return leftScore - rightScore
+      return String(left.title || '').localeCompare(String(right.title || ''))
+    })
+    .slice(0, 6)
+})
+const agentDoTodoItems = computed(() => agentDoDebug.value.todos || [])
+const agentDoReasoningPreview = computed(() => agentDoLive.value.reasoning.trim())
+const agentDoAnswerPreview = computed(() => agentDoLive.value.answer.trim())
+const hasAgentDoLivePanel = computed(() => {
+  return Boolean(
+    agentDoStepItems.value.length
+    || visibleToolLogs.value.length
+    || agentDoTodoItems.value.length
+    || agentDoReasoningPreview.value
+    || agentDoAnswerPreview.value
+    || agentDoDebug.value.previewUrl,
+  )
+})
+const agentDoCurrentTitle = computed(() => {
+  const lastStep = agentDoStepItems.value[agentDoStepItems.value.length - 1]
+  if (lastStep?.content) return lastStep.content
+  if (visibleToolLogs.value.length) return '正在执行 Agent-Do 工具链'
+  return 'Agent-Do 正在构建项目'
+})
+const previewWaitingText = computed(() => {
+  if (agentDoDebug.value.previewUrl) return '预览地址已经返回，正在载入页面内容。'
+  if (agentDoStepItems.value.length) {
+    return agentDoStepItems.value[agentDoStepItems.value.length - 1].content
+  }
+  return loading.value ? '正在上传，完成后即可预览。' : 'Agent-Do 正在生成代码并启动预览服务。'
+})
+const agentDoAccordionItems = computed(() => {
+  const items = []
+
+  for (const step of agentDoStepItems.value) {
+    items.push({
+      key: `step-${step.id}`,
+      kind: 'step',
+      icon: '◉',
+      title: formatAgentDoStage(step.stage),
+      subtitle: step.content,
+      detail: step.content,
+      state: step.stage === 'result' ? 'completed' : 'running',
+      badge: step.stage === 'result' ? '完成' : '进行中',
+      expanded: Boolean(step.expanded),
+      target: step,
+    })
+  }
+
+  if (agentDoReasoningPreview.value) {
+    items.push({
+      key: 'reasoning',
+      kind: 'reasoning',
+      icon: '💡',
+      title: '思考过程',
+      subtitle: summarizePlainText(agentDoReasoningPreview.value, 88),
+      detail: agentDoReasoningPreview.value,
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(agentDoLive.value.reasoningExpanded),
+      target: agentDoLive.value,
+      toggleKey: 'reasoningExpanded',
+    })
+  }
+
+  for (const tool of visibleToolLogs.value) {
+    items.push({
+      key: tool.key,
+      kind: 'tool',
+      icon: toolIcon(tool),
+      title: tool.title,
+      subtitle: `${summarizeToolLog(tool)} · 耗时 ${formatToolDuration(tool)}`,
+      detail: '',
+      state: tool.status,
+      badge: formatToolStatus(tool.status),
+      expanded: Boolean(tool.expanded),
+      input: tool.input,
+      output: tool.output,
+      error: tool.error,
+      target: tool,
+    })
+  }
+
+  if (agentDoTodoItems.value.length) {
+    items.push({
+      key: 'todo',
+      kind: 'todo',
+      icon: '☰',
+      title: '更新计划',
+      subtitle: `${agentDoTodoItems.value.length} 个待办项`,
+      detail: agentDoTodoItems.value.map((todo) => `• ${todo.status} / ${todo.priority} / ${todo.content}`).join('\n'),
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(agentDoLive.value.todoExpanded),
+      target: agentDoLive.value,
+      toggleKey: 'todoExpanded',
+    })
+  }
+
+  if (agentDoAnswerPreview.value) {
+    items.push({
+      key: 'answer',
+      kind: 'answer',
+      icon: '✦',
+      title: '生成输出',
+      subtitle: summarizePlainText(agentDoAnswerPreview.value, 88),
+      detail: agentDoAnswerPreview.value,
+      state: 'completed',
+      badge: '',
+      expanded: Boolean(agentDoLive.value.answerExpanded),
+      target: agentDoLive.value,
+      toggleKey: 'answerExpanded',
+    })
+  }
+
+  if (agentDoDebug.value.previewUrl) {
+    items.push({
+      key: 'result',
+      kind: 'result',
+      icon: '↗',
+      title: '最终预览 URL',
+      subtitle: summarizePlainText(agentDoDebug.value.previewUrl, 88),
+      detail: agentDoDebug.value.previewUrl,
+      url: agentDoDebug.value.previewUrl,
+      state: 'completed',
+      badge: '可访问',
+      expanded: Boolean(agentDoLive.value.resultExpanded),
+      target: agentDoLive.value,
+      toggleKey: 'resultExpanded',
+    })
+  }
+
+  return items
+})
+const allAccordionExpanded = computed(() => {
+  const items = agentDoAccordionItems.value
+  return items.length > 0 && items.every((item) => item.expanded)
+})
+
+function buildTraceAccordionItems(trace) {
+  if (!trace) return []
+  const items = []
+  const steps = Array.isArray(trace.steps) ? trace.steps.slice(-8) : []
+  const toolLogs = Array.isArray(trace.toolLogs) ? [...trace.toolLogs] : []
+  const todos = Array.isArray(trace.todos) ? trace.todos : []
+  const reasoning = String(trace.reasoning || '').trim()
+  const answer = String(trace.answer || '').trim()
+  const previewUrl = String(trace.previewUrl || '').trim()
+  const requestPayload = trace.requestPayload
+    ? JSON.stringify({
+      ...trace.requestPayload,
+      systemPrompt: trace.requestPayload.systemPrompt ? '[same prompt as the Agent-Do request]' : '',
+    }, null, 2)
+    : ''
+  const timeline = Array.isArray(trace.timeline) && trace.timeline.length
+    ? trace.timeline
+      .map((item) => {
+        const header = `[+${formatDebugDuration(item.offsetMs)}] ${item.summary}`
+        return item.detail ? `${header}\n${item.detail}` : header
+      })
+      .join('\n\n')
+    : ''
+
+  for (const step of steps) {
+    items.push({
+      key: `trace-step-${step.id}`,
+      kind: 'step',
+      icon: '•',
+      title: formatAgentDoStage(step.stage),
+      subtitle: step.content,
+      detail: step.content,
+      state: step.stage === 'result' ? 'completed' : 'running',
+      badge: step.stage === 'result' ? '完成' : '进行中',
+      expanded: Boolean(step.expanded),
+      target: step,
+    })
+  }
+
+  if (requestPayload) {
+    trace.requestExpanded = trace.requestExpanded ?? false
+    items.push({
+      key: 'trace-request',
+      kind: 'request',
+      icon: '{}',
+      title: '本次请求',
+      subtitle: summarizePlainText(requestPayload, 88),
+      detail: requestPayload,
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(trace.requestExpanded),
+      target: trace,
+      toggleKey: 'requestExpanded',
+    })
+  }
+
+  if (reasoning) {
+    trace.reasoningExpanded = trace.reasoningExpanded ?? false
+    items.push({
+      key: 'trace-reasoning',
+      kind: 'reasoning',
+      icon: '🧠',
+      title: '思考过程',
+      subtitle: summarizePlainText(reasoning, 88),
+      detail: reasoning,
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(trace.reasoningExpanded),
+      target: trace,
+      toggleKey: 'reasoningExpanded',
+    })
+  }
+
+  for (const tool of toolLogs.slice(0, 8)) {
+    items.push({
+      key: `trace-tool-${tool.key}`,
+      kind: 'tool',
+      icon: toolIcon(tool),
+      title: tool.title,
+      subtitle: `${summarizeToolLog(tool)} · 耗时 ${formatToolDuration(tool)}`,
+      detail: '',
+      state: tool.status,
+      badge: formatToolStatus(tool.status),
+      expanded: Boolean(tool.expanded),
+      input: tool.input,
+      output: tool.output,
+      error: tool.error,
+      target: tool,
+    })
+  }
+
+  if (todos.length) {
+    trace.todoExpanded = trace.todoExpanded ?? false
+    items.push({
+      key: 'trace-todo',
+      kind: 'todo',
+      icon: '☰',
+      title: '待办计划',
+      subtitle: `${todos.length} 个待办项`,
+      detail: todos.map((todo) => `• ${todo.status} / ${todo.priority} / ${todo.content}`).join('\n'),
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(trace.todoExpanded),
+      target: trace,
+      toggleKey: 'todoExpanded',
+    })
+  }
+
+  if (answer) {
+    trace.answerExpanded = trace.answerExpanded ?? true
+    items.push({
+      key: 'trace-answer',
+      kind: 'answer',
+      icon: '✓',
+      title: '生成输出',
+      subtitle: summarizePlainText(answer, 88),
+      detail: answer,
+      state: 'completed',
+      badge: '',
+      expanded: Boolean(trace.answerExpanded),
+      target: trace,
+      toggleKey: 'answerExpanded',
+    })
+  }
+
+  if (previewUrl) {
+    trace.resultExpanded = trace.resultExpanded ?? true
+    items.push({
+      key: 'trace-result',
+      kind: 'result',
+      icon: '→',
+      title: '最终预览 URL',
+      subtitle: summarizePlainText(previewUrl, 88),
+      detail: previewUrl,
+      url: previewUrl,
+      state: 'completed',
+      badge: '可访问',
+      expanded: Boolean(trace.resultExpanded),
+      target: trace,
+      toggleKey: 'resultExpanded',
+    })
+  }
+
+  if (timeline) {
+    trace.timelineExpanded = trace.timelineExpanded ?? false
+    items.push({
+      key: 'trace-timeline',
+      kind: 'timeline',
+      icon: '⏱',
+      title: '事件时间线',
+      subtitle: summarizePlainText(timeline, 88),
+      detail: timeline,
+      state: 'idle',
+      badge: '',
+      expanded: Boolean(trace.timelineExpanded),
+      target: trace,
+      toggleKey: 'timelineExpanded',
+    })
+  }
+
+  return items
+}
+
+function getTraceTitle(trace) {
+  const items = buildTraceAccordionItems(trace)
+  const step = items.find((item) => item.kind === 'step')
+  if (step?.subtitle) return step.subtitle
+  if (trace?.previewUrl) return 'Agent-Do 已完成生成与预览'
+  return 'Agent-Do 对话记录'
+}
+
+function getTraceAccordionItems(trace) {
+  return buildTraceAccordionItems(trace)
+}
+
+function isTraceAccordionExpanded(trace) {
+  const items = buildTraceAccordionItems(trace)
+  return items.length > 0 && items.every((item) => item.expanded)
+}
+
+function toggleTraceAccordionItem(item) {
+  toggleAccordionItem(item)
+}
+
+function toggleAllTraceAccordionItems(trace) {
+  const items = buildTraceAccordionItems(trace)
+  const nextExpanded = !(items.length > 0 && items.every((item) => item.expanded))
+  for (const item of items) {
+    if (!item?.target) continue
+    if (item.toggleKey) item.target[item.toggleKey] = nextExpanded
+    else item.target.expanded = nextExpanded
+  }
+}
+const previewStatus = computed(() => {
+  if (previewMode.value === 'empty') {
+    return {
+      kind: busy.value ? 'waiting' : 'idle',
+      title: busy.value ? '预览中' : '等待开始',
+      subtitle: busy.value ? previewWaitingText.value : '生成完成后会在这里自动显示预览。',
+      chip: busy.value ? '运行中' : '空闲',
+    }
+  }
+  if (urlLoadError.value || previewFrameState.value === 'error') {
+    return {
+      kind: 'error',
+      title: '地址可用，但嵌入预览失败',
+      subtitle: '可以继续通过新标签页访问最终页面。',
+      chip: '嵌入失败',
+    }
+  }
+  if (previewFrameState.value === 'loaded') {
+    return {
+      kind: 'ready',
+      title: '地址可用',
+      subtitle: '预览页面已经成功加载。',
+      chip: '已就绪',
+    }
+  }
+  return {
+    kind: agentDoDebug.value.previewUrl ? 'loading' : 'waiting',
+    title: agentDoDebug.value.previewUrl ? '服务启动中' : '预览中',
+    subtitle: agentDoDebug.value.previewUrl
+      ? '地址已经返回，正在等待页面资源加载。'
+      : previewWaitingText.value,
+    chip: agentDoDebug.value.previewUrl ? '加载中' : '准备中',
+  }
+})
+
+const activeToolsText = computed(() => {
+  if (!agentDoDebug.value.activeTools.length) return '-'
+  return agentDoDebug.value.activeTools.join('\n')
+})
+
+const toolLogsText = computed(() => {
+  if (!agentDoDebug.value.toolLogs.length) return '-'
+  return agentDoDebug.value.toolLogs
+    .map((item) => [
+      `[${item.status}] ${item.title}`,
+      `input:\n${item.input || '-'}`,
+      `output:\n${item.output || '-'}`,
+      item.error ? `error:\n${item.error}` : null,
+    ].filter(Boolean).join('\n'))
+    .join('\n\n')
+})
+
+const todoText = computed(() => {
+  if (!agentDoDebug.value.todos.length) return '-'
+  return agentDoDebug.value.todos
+    .map((todo) => `${todo.status} | ${todo.priority} | ${todo.content}`)
+    .join('\n')
+})
+
+const permissionText = computed(() => {
+  if (!agentDoDebug.value.permissions.length) return '-'
+  return agentDoDebug.value.permissions
+    .map((item) => `${item.permission}: ${item.patterns.join(', ') || '当前任务'}`)
+    .join('\n')
+})
+
+const requestPayloadText = computed(() => {
+  if (!agentDoDebug.value.requestPayload) return '-'
+  const payload = { ...agentDoDebug.value.requestPayload }
+  if (typeof payload.systemPrompt === 'string' && payload.systemPrompt) {
+    payload.systemPrompt = '[same prompt as the actual Agent-Do stream request]'
+  }
+  return JSON.stringify(payload, null, 2)
+})
+
+function formatDebugDuration(ms) {
+  const value = Number(ms || 0)
+  if (!value) return '0ms'
+  if (value < 1000) return `${value}ms`
+  const seconds = (value / 1000).toFixed(value < 10_000 ? 2 : 1)
+  return `${seconds}s`
+}
+
+function formatRelativeDebugTime(timestamp) {
+  const startedAt = Number(agentDoDebug.value.requestStartedAt || 0)
+  const at = Number(timestamp || 0)
+  if (!startedAt || !at) return '-'
+  return formatDebugDuration(Math.max(0, at - startedAt))
+}
+
+const firstEventText = computed(() => {
+  if (!agentDoDebug.value.firstEventAt) return '-'
+  return formatRelativeDebugTime(agentDoDebug.value.firstEventAt)
+})
+
+const phaseTimingText = computed(() => {
+  const startedAt = Number(agentDoDebug.value.requestStartedAt || 0)
+  if (!startedAt) return '-'
+
+  const marks = agentDoDebug.value.stageMarks || {}
+  const completedAt = Number(agentDoDebug.value.requestCompletedAt || 0)
+  const lines = []
+
+  if (agentDoDebug.value.firstEventAt) {
+    lines.push(`request -> first_event: ${formatRelativeDebugTime(agentDoDebug.value.firstEventAt)}`)
+  }
+
+  const orderedStages = ['workspace', 'session', 'sandbox', 'generate', 'preview', 'result']
+  let previousAt = startedAt
+  for (const stage of orderedStages) {
+    const at = Number(marks[stage] || 0)
+    if (!at) continue
+    lines.push(`${stage}: +${formatDebugDuration(Math.max(0, at - previousAt))} (total ${formatRelativeDebugTime(at)})`)
+    previousAt = at
+  }
+
+  if (completedAt) {
+    lines.push(`stream_done: +${formatDebugDuration(Math.max(0, completedAt - previousAt))} (total ${formatRelativeDebugTime(completedAt)})`)
+  }
+
+  return lines.length ? lines.join('\n') : '-'
+})
+
+const timelineText = computed(() => {
+  if (!agentDoDebug.value.timeline.length) return '-'
+  return agentDoDebug.value.timeline
+    .map((item) => {
+      const header = `[+${formatDebugDuration(item.offsetMs)}] ${item.summary}`
+      return item.detail ? `${header}\n${item.detail}` : header
+    })
+    .join('\n\n')
+})
 
 function cloneMessages(list) {
   return JSON.parse(JSON.stringify(Array.isArray(list) ? list : []))
+}
+
+function resetAgentDoDebug() {
+  agentDoDebug.value = {
+    requestPayload: null,
+    timeline: [],
+    requestStartedAt: 0,
+    firstEventAt: 0,
+    requestCompletedAt: 0,
+    stageMarks: {},
+    sessionId: '',
+    workspacePath: '',
+    activeTools: [],
+    toolLogs: [],
+    textDelta: '',
+    todos: [],
+    permissions: [],
+    previewUrl: '',
+    lastError: '',
+  }
+  agentDoLive.value = {
+    steps: [],
+    reasoning: '',
+    answer: '',
+    reasoningExpanded: false,
+    answerExpanded: false,
+    todoExpanded: false,
+    resultExpanded: true,
+  }
+  previewFrameState.value = 'idle'
+}
+
+function buildAgentDoTraceSnapshot() {
+  return JSON.parse(JSON.stringify({
+    requestPayload: agentDoDebug.value.requestPayload || null,
+    timeline: agentDoDebug.value.timeline || [],
+    requestStartedAt: agentDoDebug.value.requestStartedAt || 0,
+    firstEventAt: agentDoDebug.value.firstEventAt || 0,
+    requestCompletedAt: agentDoDebug.value.requestCompletedAt || 0,
+    stageMarks: agentDoDebug.value.stageMarks || {},
+    sessionId: agentDoDebug.value.sessionId || '',
+    workspacePath: agentDoDebug.value.workspacePath || '',
+    toolLogs: agentDoDebug.value.toolLogs || [],
+    textDelta: agentDoDebug.value.textDelta || '',
+    todos: agentDoDebug.value.todos || [],
+    permissions: agentDoDebug.value.permissions || [],
+    previewUrl: agentDoDebug.value.previewUrl || '',
+    lastError: agentDoDebug.value.lastError || '',
+    steps: agentDoLive.value.steps || [],
+    reasoning: agentDoLive.value.reasoning || '',
+    answer: agentDoLive.value.answer || '',
+    reasoningExpanded: Boolean(agentDoLive.value.reasoningExpanded),
+    answerExpanded: Boolean(agentDoLive.value.answerExpanded),
+    todoExpanded: Boolean(agentDoLive.value.todoExpanded),
+    resultExpanded: Boolean(agentDoLive.value.resultExpanded),
+    elapsed: formattedElapsed.value,
+  }))
+}
+
+async function loadSandboxPool() {
+  sandboxPoolLoading.value = true
+  sandboxPoolError.value = ''
+  try {
+    sandboxPool.value = await fetchAgentDoSandboxPool()
+  } catch (error) {
+    sandboxPoolError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    sandboxPoolLoading.value = false
+  }
+}
+
+async function toggleSandboxPool() {
+  showSandboxPool.value = !showSandboxPool.value
+  if (showSandboxPool.value) {
+    showAgentDoDebug.value = false
+    showWorkspaceFiles.value = false
+    await loadSandboxPool()
+  }
+}
+
+function toggleAgentDoDebug() {
+  showAgentDoDebug.value = !showAgentDoDebug.value
+  if (showAgentDoDebug.value) {
+    showSandboxPool.value = false
+    showWorkspaceFiles.value = false
+  }
 }
 
 function buildConversationSnapshot() {
@@ -428,13 +1594,16 @@ function applyConversation(conversation) {
   messages.value = cloneMessages(conversation.messages || [])
   previewMode.value = conversation.preview?.mode || 'empty'
   previewHtml.value = conversation.preview?.html || ''
-  previewUrl.value = conversation.preview?.url || ''
+  previewUrl.value = normalizeWorkshopPreviewUrl(conversation.preview?.url || '')
+  previewFrameState.value = previewUrl.value || previewHtml.value ? 'loading' : 'idle'
   previewCode.value = {
     lang: conversation.preview?.code?.lang || '',
     content: conversation.preview?.code?.content || '',
   }
   streamingFriendly.value = ''
   streamingHtml.value = ''
+  resetAgentDoDebug()
+  resetWorkspaceBrowser()
   urlLoadError.value = false
   nextTick(() => {
     historyHydrating = false
@@ -503,7 +1672,11 @@ async function deleteConversation(id) {
   const targetTitle = conversation?.title || '该对话'
   const confirmed = window.confirm(`确定删除“${targetTitle}”吗？删除后无法恢复。`)
   if (!confirmed) return
-  await deleteWorkshopConversation(id)
+  try {
+    await deleteWorkshopConversation(id)
+  } catch (e) {
+    console.error('delete conversation failed:', e)
+  }
   const nextList = conversationList.value.filter((item) => item.id !== id)
   conversationList.value = nextList
   if (currentConversationId.value === id && nextList[0]) {
@@ -608,10 +1781,131 @@ function formatConversationTime(raw) {
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function formatPoolTime(raw) {
+  if (!raw) return '-'
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function formatIdleTtl(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000))
+  if (!totalSeconds) return '-'
+  if (totalSeconds < 60) return `${totalSeconds} 秒`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`
+}
+
+function formatReclaimReason(reason) {
+  const map = {
+    'idle-timeout': '空闲超时回收',
+    'pool-limit': '超过容器池上限',
+  }
+  return map[reason] || reason || '-'
+}
+
+function formatAgentDoStage(stage) {
+  const map = {
+    workspace: '工作目录',
+    session: '会话绑定',
+    generate: '代码生成',
+    preview: '预览启动',
+    result: '预览完成',
+  }
+  return map[stage] || '处理中'
+}
+
+function formatToolStatus(status) {
+  const map = {
+    pending: '待执行',
+    running: '执行中',
+    completed: '已完成',
+    error: '失败',
+  }
+  return map[status] || status || '处理中'
+}
+
+function summarizePlainText(text, maxLength = 120) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return '暂无详细内容'
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength)}...`
+}
+
+function toolIcon(tool) {
+  if (tool.status === 'error') return '⚠'
+  if (tool.status === 'completed') return '✓'
+  if (tool.title?.toLowerCase().includes('read')) return '📄'
+  if (tool.title?.toLowerCase().includes('bash') || tool.title?.toLowerCase().includes('command')) return '⌘'
+  if (tool.title?.toLowerCase().includes('write') || tool.title?.toLowerCase().includes('edit')) return '✎'
+  return tool.status === 'running' ? '◌' : '◦'
+}
+
+function formatToolDuration(tool) {
+  const startedAt = Number(tool.startedAt || 0)
+  const endedAt = Number(tool.endedAt || tool.updatedAt || Date.now())
+  if (!startedAt) return '-'
+  const seconds = Math.max(0, Math.round((endedAt - startedAt) / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remain = seconds % 60
+  return remain ? `${minutes}m ${remain}s` : `${minutes}m`
+}
+
+function summarizeToolLog(tool) {
+  const content = tool.error || tool.output || tool.input || ''
+  const normalized = String(content).replace(/\s+/g, ' ').trim()
+  if (!normalized) return 'Agent-Do 正在处理该步骤…'
+  if (normalized.length <= 180) return normalized
+  return `${normalized.slice(0, 180)}...`
+}
+
+function toggleAccordionItem(item) {
+  if (!item?.target) return
+  if (item.toggleKey) {
+    item.target[item.toggleKey] = !item.target[item.toggleKey]
+    return
+  }
+  item.target.expanded = !item.target.expanded
+}
+
+function toggleAllAccordionItems() {
+  const nextExpanded = !allAccordionExpanded.value
+  for (const item of agentDoAccordionItems.value) {
+    if (!item?.target) continue
+    if (item.toggleKey) {
+      item.target[item.toggleKey] = nextExpanded
+    } else {
+      item.target.expanded = nextExpanded
+    }
+  }
+}
+
 /** 右侧仅在整段 HTML 生成结束（及上传结束）后首次展示，流式过程中不更新 iframe */
 function flushPreviewImmediate(html) {
   previewHtml.value = html
   previewMode.value = 'html'
+  previewFrameState.value = 'loading'
+}
+
+function handlePreviewLoad(event) {
+  previewFrameState.value = 'loaded'
+  urlLoadError.value = false
+  if (event?.target?.focus) {
+    event.target.focus()
+  }
+}
+
+function handlePreviewError() {
+  previewFrameState.value = 'error'
+  urlLoadError.value = true
 }
 
 function copyCode() {
@@ -692,6 +1986,250 @@ function renderEscapedSource(text) {
     .replace(/\n/g, '<br>')
 }
 
+function cloneSegments(list) {
+  return JSON.parse(JSON.stringify(Array.isArray(list) ? list : []))
+}
+
+function getStreamingSegment(id) {
+  return streamingSegments.value.find((item) => item._streamId === id)
+}
+
+function upsertStreamingText(id, content) {
+  const existing = getStreamingSegment(id)
+  if (existing) {
+    existing.content = content
+    return existing
+  }
+  const segment = { _streamId: id, kind: 'text', content }
+  streamingSegments.value.push(segment)
+  return segment
+}
+
+function upsertStreamingCard(id, next) {
+  const existing = getStreamingSegment(id)
+  if (existing) {
+    Object.assign(existing, next)
+    return existing
+  }
+  const segment = { _streamId: id, kind: 'card', open: true, ...next }
+  streamingSegments.value.push(segment)
+  return segment
+}
+
+function formatTodoContent(todos) {
+  if (!Array.isArray(todos) || todos.length === 0) {
+    return '当前没有待办项。'
+  }
+  return todos
+    .map((todo) => `- [${todo.status}] ${todo.content} (${todo.priority})`)
+    .join('\n')
+}
+
+function buildAgentDoChatMarkdown({ answer, previewUrl, elapsed } = {}) {
+  const sections = []
+  const finalAnswer = String(answer || '').trim()
+  if (finalAnswer) {
+    sections.push(finalAnswer)
+  }
+  if (previewUrl) {
+    sections.push(`预览链接：[打开预览](${previewUrl})`)
+  }
+  if (elapsed && previewUrl) {
+    sections.push(`已完成，耗时 ${elapsed}。`)
+  }
+  return sections.join('\n\n').trim()
+}
+
+function buildAgentDoAssistantSegments({ previewUrl, elapsed } = {}) {
+  const content = buildAgentDoChatMarkdown({
+    answer: agentDoLive.value.answer,
+    previewUrl: previewUrl || agentDoDebug.value.previewUrl,
+    elapsed,
+  })
+  if (!content) return []
+  return [{ kind: 'text', content }]
+}
+
+function syncAgentDoStreamingAnswer({ previewUrl } = {}) {
+  const content = buildAgentDoChatMarkdown({
+    answer: agentDoLive.value.answer,
+    previewUrl: previewUrl || agentDoDebug.value.previewUrl,
+  })
+  if (!content) return null
+  return upsertStreamingText('agentDo-answer', content)
+}
+
+function syncAgentDoStreamingPlaceholder(content) {
+  const text = String(content || '').trim()
+  if (!text) return null
+  if (String(agentDoLive.value.answer || '').trim()) return null
+  return upsertStreamingText('agentDo-answer', text)
+}
+
+function pushAgentDoTimeline(summary, detail = '') {
+  const now = Date.now()
+  if (!agentDoDebug.value.firstEventAt) {
+    agentDoDebug.value.firstEventAt = now
+  }
+  const startedAt = Number(agentDoDebug.value.requestStartedAt || now)
+  const nextItem = {
+    key: `${now}-${agentDoDebug.value.timeline.length}`,
+    at: now,
+    offsetMs: Math.max(0, now - startedAt),
+    summary,
+    detail,
+  }
+  agentDoDebug.value.timeline = [...agentDoDebug.value.timeline, nextItem].slice(-200)
+}
+
+function markAgentDoStage(stage) {
+  if (!stage) return
+  if (agentDoDebug.value.stageMarks[stage]) return
+  agentDoDebug.value.stageMarks = {
+    ...agentDoDebug.value.stageMarks,
+    [stage]: Date.now(),
+  }
+}
+
+function applyAgentDoStreamEvent(event) {
+  if (!event || typeof event !== 'object') return null
+  const eventSummary = event.type === 'status'
+    ? `status/${event.stage || 'status'}: ${event.content || ''}`
+    : event.type === 'tool'
+      ? `tool/${event.status || 'pending'}: ${event.title || event.tool || 'tool'}`
+      : event.type === 'delta'
+        ? `${event.partType || 'delta'}: ${summarizePlainText(event.content || '', 80)}`
+        : event.type === 'meta'
+          ? `meta/session=${event.agentDoSessionId || '-'}`
+          : event.type === 'todo'
+            ? `todo: ${Array.isArray(event.todos) ? event.todos.length : 0} items`
+            : event.type === 'permission'
+              ? `permission: ${event.permission || '-'}`
+              : event.type === 'result'
+                ? 'result: preview url ready'
+                : event.type === 'error'
+                  ? `error: ${event.content || 'Agent-Do stream failed'}`
+                  : String(event.type || 'unknown')
+  pushAgentDoTimeline(eventSummary, JSON.stringify(event, null, 2))
+
+  if (event.type === 'status') {
+    const content = String(event.content || '').trim()
+    markAgentDoStage(event.stage || 'status')
+    if (content) {
+      const last = agentDoLive.value.steps[agentDoLive.value.steps.length - 1]
+      if (!last || last.content !== content) {
+        agentDoLive.value.steps.push({
+          id: `${event.stage || 'status'}-${Date.now()}-${agentDoLive.value.steps.length}`,
+          stage: event.stage || 'status',
+          content,
+        })
+      }
+    }
+    const statusText = event.stage === 'session'
+      ? '正在建立 Agent-Do 会话...'
+      : event.stage === 'generate'
+        ? 'Agent-Do 正在生成中...'
+        : event.stage === 'preview'
+          ? 'Agent-Do 已完成生成，正在启动预览...'
+          : content || 'Agent-Do 正在处理中...'
+    syncAgentDoStreamingPlaceholder(statusText)
+    return null
+  }
+
+  if (event.type === 'meta') {
+    agentDoDebug.value.sessionId = event.agentDoSessionId || ''
+    agentDoDebug.value.workspacePath = event.workspacePath || ''
+    syncAgentDoStreamingPlaceholder('正在连接 Agent-Do...')
+    return null
+  }
+
+  if (event.type === 'delta') {
+    if (event.partType === 'reasoning') {
+      agentDoLive.value.reasoning += event.content || ''
+    } else {
+      agentDoLive.value.answer += event.content || ''
+      syncAgentDoStreamingAnswer()
+    }
+    agentDoDebug.value.textDelta += event.content || ''
+    return null
+  }
+
+  if (event.type === 'tool') {
+    const active = new Set(agentDoDebug.value.activeTools)
+    if (event.status === 'running' || event.status === 'pending') {
+      active.add(`${event.title} (${event.status})`)
+    } else {
+      Array.from(active).forEach((item) => {
+        if (item.startsWith(`${event.title} (`)) active.delete(item)
+      })
+    }
+    agentDoDebug.value.activeTools = Array.from(active)
+    const toolKey = `${event.tool}-${event.title}`
+    const previous = agentDoDebug.value.toolLogs.find((item) => item.key === toolKey)
+    const startedAt = previous?.startedAt || Date.now()
+    const updatedAt = Date.now()
+    const endedAt = event.status === 'completed' || event.status === 'error'
+      ? updatedAt
+      : previous?.endedAt || null
+    agentDoDebug.value.toolLogs = [
+      ...agentDoDebug.value.toolLogs.filter((item) => item.key !== toolKey),
+      {
+        key: toolKey,
+        title: event.title,
+        status: event.status,
+        input: event.input || '',
+        output: event.output || '',
+        error: event.error || '',
+        startedAt,
+        updatedAt,
+        endedAt,
+        expanded: previous?.expanded ?? (event.status === 'running' || event.status === 'error'),
+      },
+    ]
+    if (event.status === 'running' || event.status === 'pending') {
+      syncAgentDoStreamingPlaceholder(`Agent-Do 正在执行 ${event.title || event.tool || '任务'}...`)
+    }
+    return null
+  }
+
+  if (event.type === 'todo') {
+    agentDoDebug.value.todos = Array.isArray(event.todos) ? event.todos : []
+    return null
+  }
+
+  if (event.type === 'permission') {
+    agentDoDebug.value.permissions = [
+      ...agentDoDebug.value.permissions,
+      {
+        permission: event.permission || '',
+        patterns: Array.isArray(event.patterns) ? event.patterns : [],
+      },
+    ]
+    return null
+  }
+
+  if (event.type === 'result') {
+    markAgentDoStage('result')
+    agentDoDebug.value.sessionId = event.agentDoSessionId || agentDoDebug.value.sessionId
+    agentDoDebug.value.workspacePath = event.workspacePath || agentDoDebug.value.workspacePath
+    agentDoDebug.value.previewUrl = event.url || ''
+    agentDoLive.value.steps.push({
+      id: `result-${Date.now()}`,
+      stage: 'result',
+      content: '预览地址已生成，可以开始加载页面。',
+    })
+    syncAgentDoStreamingAnswer({ previewUrl: event.url })
+    return event
+  }
+
+  if (event.type === 'error') {
+    agentDoDebug.value.lastError = event.content || 'Agent-Do 流式生成失败'
+    throw new Error(event.content || 'Agent-Do 流式生成失败')
+  }
+
+  return null
+}
+
 // ── HTML 输出兜底清洗：避免说明文字/代码围栏混入部署文件 ───────
 function normalizeGeneratedHtml(raw) {
   if (!raw) return ''
@@ -756,18 +2294,23 @@ html, body {
 }
 
 // ── Send message ───────────────────────────────────────────────
-async function sendMessage() {
-  const text = inputText.value.trim()
+async function sendLegacyMessage(options = {}) {
+  const text = (options.textOverride ?? inputText.value).trim()
   if (!text || busy.value) return
 
   const title = extractTitle(text)
   if (title) chatTitle.value = title
 
-  messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
-  inputText.value = ''
-  if (textareaEl.value) textareaEl.value.style.height = 'auto'
+  if (!options.skipUserPush) {
+    messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
+    inputText.value = ''
+    if (textareaEl.value) textareaEl.value.style.height = 'auto'
+  }
   busy.value = true
   loading.value = true
+  userScrolledUp.value = false
+  newChunksWhileScrolledUp.value = false
+  startElapsedTimer()
   previewHtml.value = ''
   previewMode.value = 'empty'
   scrollBottom()
@@ -782,7 +2325,6 @@ async function sendMessage() {
   messages.value.push(assistantMsg)
   streamingFriendly.value = ''
   streamingHtml.value = ''
-  // 流式阶段由助手气泡展示进度，勿与全局 loading 的「打字点」叠在一起（否则会像一直卡在加载）
   loading.value = false
 
   let generatedHTML = ''
@@ -860,6 +2402,7 @@ async function sendMessage() {
 
   } catch (e) {
     assistantMsg.streamingLive = false
+    assistantMsg.agentDoTrace = buildAgentDoTraceSnapshot()
     streamingFriendly.value = ''
     streamingHtml.value = ''
     const errorMsg = e.name === 'AbortError'
@@ -868,34 +2411,151 @@ async function sendMessage() {
     const segs = [{ kind: 'text', content: errorMsg }]
     if (cleanedHTML?.trim()) {
       segs.push({ kind: 'html_source', content: cleanedHTML.trim() })
-      // 上传失败等：用本地 HTML 一次性展示在右侧
       flushPreviewImmediate(enforceWorkshopPreviewFit(cleanedHTML.trim()))
     }
     assistantMsg.segments = segs
   } finally {
+    agentDoDebug.value.requestCompletedAt = Date.now()
+    stopElapsedTimer()
     busy.value = false
     loading.value = false
+    userScrolledUp.value = false
+    newChunksWhileScrolledUp.value = false
   }
 
   assistantMsg.time = nowTime()
   await nextTick()
+  forceScrollBottom()
+}
+
+async function sendMessage() {
+  const text = inputText.value.trim()
+  if (!text || busy.value) return
+
+  const title = extractTitle(text)
+  if (title) chatTitle.value = title
+
+  messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
+  inputText.value = ''
+  if (textareaEl.value) textareaEl.value.style.height = 'auto'
+
+  const assistantMsg = {
+    key: allocMessageKey(),
+    role: 'assistant',
+    segments: [],
+    streamingLive: true,
+    time: ''
+  }
+  messages.value.push(assistantMsg)
+  streamingSegments.value = [{ _streamId: 'agentDo-answer', kind: 'text', content: 'Agent-Do 正在处理中...' }]
+  resetAgentDoDebug()
+  const requestPayload = {
+    context: text,
+    systemPrompt: '浣犳槸璧勬繁鍓嶇寮€鍙戣€呫€傚浜庢父鎴忋€佸姩鐢汇€佸伐鍏烽〉闈㈢瓑绾墠绔渶姹傦紝鐩存帴鐢熸垚鍗曚釜 index.html锛堝唴鑱旀墍鏈?JS/CSS锛夛紝涓嶈鍒涘缓 npm 椤圭洰銆傚彧鏈夌敤鎴锋槑纭姹傛鏋舵椂鎵嶇敤 Vite銆傝拷姹備竴姝ュ埌浣嶏紝鍑忓皯鏂囦欢鎿嶄綔娆℃暟銆?',
+    conversationId: currentConversationId.value || `conv-${Date.now()}`,
+    username: currentUser.value?.username || 'workshop_guest',
+    title: title || chatTitle.value || 'Workshop Project',
+  }
+  agentDoDebug.value.requestPayload = requestPayload
+  agentDoDebug.value.requestStartedAt = Date.now()
   scrollBottom()
+
+  try {
+    busy.value = true
+    loading.value = false
+    userScrolledUp.value = false
+    newChunksWhileScrolledUp.value = false
+    startElapsedTimer()
+    previewHtml.value = ''
+    previewMode.value = 'empty'
+    previewFrameState.value = 'idle'
+
+    let finalResult = null
+    for await (const event of streamPreviewWithAgentDo({
+      context: text,
+      systemPrompt: '你是资深前端开发者。对于游戏、动画、工具页面等纯前端需求，直接生成单个 index.html（内联所有 JS/CSS），不要创建 npm 项目。只有用户明确要求框架时才用 Vite。追求一步到位，减少文件操作次数。',
+      conversationId: currentConversationId.value || `conv-${Date.now()}`,
+      username: currentUser.value?.username || 'workshop_guest',
+      title: title || chatTitle.value || 'Workshop Project',
+    })) {
+      const maybeResult = applyAgentDoStreamEvent(event)
+      if (maybeResult?.url) {
+        finalResult = maybeResult
+        previewUrl.value = maybeResult.url
+        previewMode.value = 'url'
+        previewFrameState.value = 'loading'
+        iframeKey.value++
+      }
+      await nextTick()
+      scrollBottom()
+    }
+
+    agentDoDebug.value.requestCompletedAt = Date.now()
+    stopElapsedTimer()
+    assistantMsg.streamingLive = false
+    assistantMsg.segments = buildAgentDoAssistantSegments({
+      previewUrl: finalResult?.url,
+      elapsed: formattedElapsed.value,
+    })
+    assistantMsg.time = nowTime()
+    streamingSegments.value = []
+    if (!finalResult) {
+      throw new Error('Agent-Do 未返回预览地址')
+    }
+    await loadWorkspaceTree(true)
+    await nextTick()
+    forceScrollBottom()
+  } catch (_error) {
+    stopElapsedTimer()
+    assistantMsg.streamingLive = false
+    assistantMsg.agentDoTrace = buildAgentDoTraceSnapshot()
+    assistantMsg.segments = [
+      {
+        kind: 'text',
+        content: `⚠️ Agent-Do 生成失败：${_error instanceof Error ? _error.message : String(_error)}`,
+      },
+    ]
+    assistantMsg.time = nowTime()
+    streamingSegments.value = []
+    busy.value = false
+    loading.value = false
+    await nextTick()
+    forceScrollBottom()
+    return
+  } finally {
+    stopElapsedTimer()
+    busy.value = false
+    loading.value = false
+    userScrolledUp.value = false
+    newChunksWhileScrolledUp.value = false
+  }
 }
 
 function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 function scrollBottom() {
-  nextTick(() => { if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight })
+  nextTick(() => {
+    if (!messagesEl.value) return
+    if (userScrolledUp.value) {
+      newChunksWhileScrolledUp.value = true
+      return
+    }
+    messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
 }
 function clearChat() {
   messages.value = []
   streamingFriendly.value = ''
   streamingHtml.value = ''
+  streamingSegments.value = []
+  resetAgentDoDebug()
+  resetWorkspaceBrowser()
   chatTitle.value = '新对话'
   previewMode.value = 'empty'
   previewHtml.value = ''
   previewUrl.value = ''
+  previewFrameState.value = 'idle'
   previewCode.value = { lang: '', content: '' }
   urlLoadError.value = false
   persistConversations()
@@ -921,8 +2581,19 @@ watch(
   { deep: true },
 )
 
+watch(
+  () => currentConversationId.value,
+  async () => {
+    resetWorkspaceBrowser()
+    if (showWorkspaceFiles.value && currentWorkspaceRequest.value.ready) {
+      await loadWorkspaceTree(true)
+    }
+  },
+)
+
 onBeforeUnmount(() => {
   stopDrag()
+  stopElapsedTimer()
   if (persistTimer) clearTimeout(persistTimer)
   persistConversations()
 })
@@ -1174,6 +2845,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
 }
 
 .chat-header {
@@ -1222,6 +2894,10 @@ onBeforeUnmount(() => {
   display: flex; align-items: center;
 }
 .icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary, #e8e8f0); }
+.icon-btn--active {
+  background: rgba(99,102,241,0.18);
+  color: var(--accent, #a5b4fc);
+}
 
 .messages {
   flex: 1;
@@ -1274,6 +2950,561 @@ onBeforeUnmount(() => {
 .user-bubble--md :deep(.markdown-body pre) {
   background: rgba(0, 0, 0, 0.22) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.agentDo-live-shell {
+  width: 100%;
+  padding: 14px 14px 12px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.22), transparent 38%),
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.2);
+}
+
+.agentDo-live-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.agentDo-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.agentDo-live-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #818cf8;
+  box-shadow: 0 0 0 6px rgba(129, 140, 248, 0.14);
+  animation: agentDoPulse 1.8s infinite;
+}
+
+.agentDo-live-heading {
+  min-width: 0;
+}
+
+.agentDo-live-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.96);
+  line-height: 1.35;
+}
+
+.agentDo-live-subtitle {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.56);
+  word-break: break-word;
+}
+
+.agentDo-live-section + .agentDo-live-section {
+  margin-top: 14px;
+}
+
+.agentDo-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agentDo-event-item {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
+}
+
+.agentDo-event-item.state-running {
+  border-color: rgba(250,204,21,0.16);
+  background: rgba(250,204,21,0.05);
+}
+
+.agentDo-event-item.state-completed {
+  border-color: rgba(74,222,128,0.12);
+}
+
+.agentDo-event-item.state-error {
+  border-color: rgba(248,113,113,0.18);
+  background: rgba(239,68,68,0.05);
+}
+
+.agentDo-event-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  background: transparent;
+  color: inherit;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.agentDo-event-summary:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.agentDo-event-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agentDo-event-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.06);
+  font-size: 0.84rem;
+  flex-shrink: 0;
+}
+
+.agentDo-event-copy {
+  min-width: 0;
+}
+
+.agentDo-event-title {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.96);
+  line-height: 1.4;
+}
+
+.agentDo-event-subtitle {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.56);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.agentDo-event-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.agentDo-event-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.76);
+}
+
+.agentDo-event-badge.badge-running,
+.agentDo-event-badge.badge-pending {
+  color: #fde68a;
+  background: rgba(250,204,21,0.1);
+}
+
+.agentDo-event-badge.badge-completed {
+  color: #bbf7d0;
+  background: rgba(34,197,94,0.12);
+}
+
+.agentDo-event-badge.badge-error {
+  color: #fecaca;
+  background: rgba(239,68,68,0.12);
+}
+
+.agentDo-event-detail {
+  padding: 0 12px 12px 44px;
+}
+
+.agentDo-live-footer {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agentDo-live-footer-text {
+  font-size: 0.76rem;
+  color: rgba(255,255,255,0.46);
+}
+
+.agentDo-expand-all {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.74);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.agentDo-expand-all:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.agentDo-result-inline {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.62);
+}
+
+.agentDo-result-inline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 6px rgba(74,222,128,0.12);
+}
+
+.agentDo-result-inline-link {
+  color: #bbf7d0;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.agentDo-section-label {
+  margin-bottom: 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agentDo-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agentDo-step-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.agentDo-step-marker {
+  width: 16px;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.agentDo-step-item:not(:last-child) .agentDo-step-marker::after {
+  content: '';
+  position: absolute;
+  top: 16px;
+  bottom: -14px;
+  width: 1px;
+  background: rgba(255,255,255,0.12);
+}
+
+.agentDo-step-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 6px;
+  background: rgba(255,255,255,0.4);
+}
+
+.agentDo-step-item.is-current .agentDo-step-dot {
+  background: #facc15;
+  box-shadow: 0 0 0 7px rgba(250, 204, 21, 0.12);
+}
+
+.agentDo-step-content {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.agentDo-step-stage {
+  font-size: 0.72rem;
+  color: #a5b4fc;
+  margin-bottom: 4px;
+}
+
+.agentDo-step-text {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.92);
+}
+
+.agentDo-tool-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.agentDo-tool-card {
+  padding: 12px 13px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.agentDo-tool-card.is-running {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.agentDo-tool-card.is-error {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.agentDo-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.agentDo-tool-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agentDo-tool-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.agentDo-tool-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  font-size: 0.9rem;
+}
+
+.agentDo-tool-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.95);
+}
+
+.agentDo-tool-meta {
+  margin-top: 4px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.73rem;
+  color: rgba(255,255,255,0.5);
+}
+
+.agentDo-tool-state {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.agentDo-tool-state.state-running,
+.agentDo-tool-state.state-pending {
+  color: #bfdbfe;
+  background: rgba(59,130,246,0.13);
+  border-color: rgba(96,165,250,0.18);
+}
+
+.agentDo-tool-state.state-completed {
+  color: #bbf7d0;
+  background: rgba(34,197,94,0.12);
+  border-color: rgba(74,222,128,0.18);
+}
+
+.agentDo-tool-state.state-error {
+  color: #fecaca;
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(248,113,113,0.18);
+}
+
+.agentDo-tool-body {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.68);
+  word-break: break-word;
+}
+
+.agentDo-tool-toggle {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.72);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.agentDo-tool-toggle:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.agentDo-tool-detail {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agentDo-tool-detail-block {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.18);
+}
+
+.agentDo-tool-detail-block.is-error {
+  border-color: rgba(248,113,113,0.22);
+}
+
+.agentDo-tool-detail-label {
+  padding: 8px 10px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.52);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.agentDo-tool-detail-block pre {
+  margin: 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  color: rgba(255,255,255,0.82);
+}
+
+.agentDo-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agentDo-todo-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.agentDo-todo-check {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.3);
+}
+
+.agentDo-todo-check.todo-completed {
+  background: #4ade80;
+}
+
+.agentDo-todo-check.todo-in_progress {
+  background: #facc15;
+}
+
+.agentDo-todo-text {
+  font-size: 0.86rem;
+  color: rgba(255,255,255,0.9);
+  line-height: 1.45;
+}
+
+.agentDo-note-card,
+.agentDo-output-card {
+  padding: 12px 13px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.agentDo-note-card {
+  color: rgba(255,255,255,0.74);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.agentDo-output-card :deep(.markdown-body) {
+  background: transparent !important;
+}
+
+.agentDo-result-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.06));
+  border: 1px solid rgba(74,222,128,0.16);
+}
+
+.agentDo-result-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #dcfce7;
+}
+
+.agentDo-result-url {
+  margin-top: 5px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: rgba(220,252,231,0.78);
+  word-break: break-all;
+}
+
+.agentDo-result-link {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: #ecfdf5;
+  background: rgba(16,185,129,0.16);
+  border: 1px solid rgba(52,211,153,0.2);
 }
 
 .agent-text {
@@ -1522,20 +3753,487 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+
+.results-content--with-files {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
+    rgba(0,0,0,0.08);
+}
+
+.workspace-browser {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  background: rgba(10,10,14,0.72);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workspace-browser-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.workspace-browser-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.workspace-browser-subtitle {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  color: rgba(255,255,255,0.56);
+  line-height: 1.45;
+}
+
+.workspace-refresh-btn {
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.88);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.workspace-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.workspace-browser-error,
+.file-viewer-error {
+  margin: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #fecaca;
+  background: rgba(127,29,29,0.35);
+  border: 1px solid rgba(248,113,113,0.2);
+  font-size: 0.84rem;
+}
+
+.workspace-browser-empty,
+.file-viewer-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: rgba(255,255,255,0.54);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.workspace-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 0 14px;
+}
+
+.workspace-tree-node {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.86);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.workspace-tree-node:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.workspace-tree-node.is-selected {
+  background: rgba(99,102,241,0.16);
+  color: rgba(255,255,255,0.98);
+}
+
+.workspace-tree-caret {
+  width: 12px;
+  min-width: 12px;
+  color: rgba(255,255,255,0.46);
+}
+
+.workspace-tree-caret svg {
+  transition: transform 0.16s ease;
+}
+
+.workspace-tree-caret svg.open {
+  transform: rotate(90deg);
+}
+
+.workspace-tree-icon {
+  width: 18px;
+  min-width: 18px;
+}
+
+.workspace-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.results-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  flex-shrink: 0;
+}
+
+.results-tab {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.7);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results-tab.active {
+  color: rgba(255,255,255,0.96);
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.16);
+}
+
+.file-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-viewer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.file-viewer-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.94);
+}
+
+.file-viewer-subtitle {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.54);
+  word-break: break-word;
+}
+
+.file-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: rgba(8,8,12,0.78);
+}
+
+.file-viewer-notice {
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(250,204,21,0.1);
+  border: 1px solid rgba(250,204,21,0.18);
+  color: #fde68a;
+  font-size: 0.78rem;
+}
+
+.file-viewer-code {
+  margin: 0;
+  padding: 18px;
+  white-space: pre;
+  overflow: auto;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+  line-height: 1.58;
+  color: #d8e5f2;
+}
+
+.debug-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.sandbox-pool-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.sandbox-pool-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sandbox-pool-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.sandbox-pool-subtitle {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #a1a1b0);
+}
+
+.sandbox-pool-refresh {
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.88);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sandbox-pool-refresh:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sandbox-pool-error {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #fecaca;
+  background: rgba(127,29,29,0.35);
+  border: 1px solid rgba(248,113,113,0.2);
+  font-size: 0.84rem;
+}
+
+.sandbox-pool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sandbox-pool-card {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sandbox-pool-card-title {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-secondary, #a1a1b0);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.sandbox-pool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.sandbox-pool-item {
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.16);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.sandbox-pool-item-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  word-break: break-word;
+}
+
+.sandbox-pool-item-meta {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  color: rgba(255,255,255,0.58);
+  word-break: break-word;
+}
+
+.sandbox-pool-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: rgba(255,255,255,0.52);
+  font-size: 0.84rem;
+}
+
+.debug-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.debug-panel-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.debug-item {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
+}
+
+.debug-label {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-secondary, #a1a1b0);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.debug-value {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-primary, #e8e8f0);
+  background: rgba(0,0,0,0.18);
+  max-height: 240px;
+  overflow: auto;
 }
 
 .results-empty {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  padding: 22px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.preview-waiting-shell {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 28px 26px;
+  border-radius: 28px;
+  text-align: center;
+  color: rgba(255,255,255,0.75);
+  background:
+    radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 45%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.preview-waiting-shell.is-busy::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.preview-waiting-orb {
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 18px;
+  border-radius: 28px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: var(--text-secondary, #888);
+  color: rgba(255,255,255,0.82);
+  background: rgba(255,255,255,0.04);
+  position: relative;
+}
+
+.preview-waiting-ring {
+  position: absolute;
+  inset: 10px;
+  border-radius: 22px;
+  border: 1px solid rgba(129,140,248,0.3);
+}
+
+.preview-waiting-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.96);
+}
+
+.preview-waiting-text {
+  margin: 10px auto 0;
+  max-width: 420px;
+  line-height: 1.65;
   font-size: 0.9rem;
+  color: rgba(255,255,255,0.62);
+}
+
+.preview-waiting-tips {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.preview-waiting-tips span {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  color: #d1d5db;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
 }
 
 .preview-iframe {
@@ -1553,6 +4251,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 .code-preview-header {
   display: flex;
@@ -1584,6 +4283,68 @@ onBeforeUnmount(() => {
   overflow: hidden;
   min-height: 0;
   min-width: 0;
+}
+
+.preview-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+
+.preview-status-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.preview-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.35);
+}
+
+.preview-status-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.94);
+}
+
+.preview-status-subtitle {
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.56);
+}
+
+.preview-status-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.8);
+}
+
+.preview-status-bar.status-waiting .preview-status-dot,
+.preview-status-bar.status-loading .preview-status-dot {
+  background: #facc15;
+  box-shadow: 0 0 0 6px rgba(250,204,21,0.12);
+}
+
+.preview-status-bar.status-ready .preview-status-dot {
+  background: #4ade80;
+  box-shadow: 0 0 0 6px rgba(74,222,128,0.12);
+}
+
+.preview-status-bar.status-error .preview-status-dot {
+  background: #f87171;
+  box-shadow: 0 0 0 6px rgba(248,113,113,0.12);
 }
 
 .url-bar {
@@ -1639,6 +4400,236 @@ onBeforeUnmount(() => {
 }
 .fallback-link:hover { text-decoration: underline; }
 
+@keyframes agentDoPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.8;
+  }
+}
+
+/* ── Stream status bar (sticky top) ───────────────────────── */
+.stream-status-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  margin: -16px -16px 12px;
+  background: linear-gradient(90deg, rgba(99,102,241,0.15) 0%, rgba(15,15,19,0.95) 60%);
+  border-bottom: 1px solid rgba(99,102,241,0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.stream-status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 40%;
+}
+
+.stream-status-dot-anim {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #818cf8;
+  flex-shrink: 0;
+  animation: statusPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+.stream-status-phase {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #c7d2fe;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stream-status-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stream-status-steps {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stream-status-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.stream-status-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #4f46e5, #818cf8);
+  transition: width 0.4s ease;
+}
+
+.stream-status-right {
+  flex-shrink: 0;
+}
+
+.stream-status-elapsed {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+/* ── Scroll to bottom button ─────────────────────────────── */
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid rgba(99,102,241,0.4);
+  border-radius: 999px;
+  background: rgba(25,25,35,0.92);
+  color: #c7d2fe;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: rgba(79,70,229,0.6);
+  box-shadow: 0 6px 28px rgba(79,70,229,0.35);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.scroll-btn-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.5);
+  font-size: 0.68rem;
+  color: #e0e7ff;
+  font-weight: 700;
+}
+
+.scroll-btn-enter-active,
+.scroll-btn-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.scroll-btn-enter-from,
+.scroll-btn-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px);
+}
+
+/* ── Agent-Do timer in header ────────────────────────────── */
+.agentDo-live-timer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.15);
+  border: 1px solid rgba(129,140,248,0.25);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.agentDo-live-timer svg {
+  opacity: 0.7;
+}
+
+/* ── Agent-Do progress bar ───────────────────────────────── */
+.agentDo-progress-bar {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(99,102,241,0.08);
+  border: 1px solid rgba(129,140,248,0.15);
+}
+
+.agentDo-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+.agentDo-progress-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.agentDo-progress-detail {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.agentDo-progress-track {
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.agentDo-progress-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #4f46e5, #818cf8, #a78bfa);
+  transition: width 0.5s ease;
+  position: relative;
+}
+
+.agentDo-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+  animation: progressShine 2s ease-in-out infinite;
+}
+
+@keyframes progressShine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 .code-preview-body {
   flex: 1;
   overflow: auto;
@@ -1671,6 +4662,21 @@ onBeforeUnmount(() => {
 
   .sidebar-brand {
     font-size: 1.55rem;
+  }
+
+  .agentDo-live-header,
+  .agentDo-result-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .preview-waiting-shell {
+    padding: 24px 18px;
+    border-radius: 22px;
+  }
+
+  .sandbox-pool-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
