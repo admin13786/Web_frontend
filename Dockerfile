@@ -5,7 +5,8 @@ WORKDIR /app
 
 # 先复制依赖文件，利用 Docker 缓存
 COPY package.json package-lock.json ./
-RUN npm ci
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY} && npm ci
 
 # 再复制源码并构建（构建时可传入后端 API 地址）
 COPY . .
