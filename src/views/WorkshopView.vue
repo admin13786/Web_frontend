@@ -273,7 +273,8 @@
             title="使用单个 HTML 文件生成"
             @click="setGenerationMode('single_html')"
           >
-            HTML
+            <span class="mode-switch__label">HTML</span>
+            <span class="mode-switch__hint">单文件</span>
           </button>
           <button
             type="button"
@@ -282,7 +283,8 @@
             title="使用 Vite 多文件工程生成"
             @click="setGenerationMode('vite')"
           >
-            Vite
+            <span class="mode-switch__label">Vite</span>
+            <span class="mode-switch__hint">多文件</span>
           </button>
         </div>
         <button class="send-btn" :disabled="!inputText.trim() || busy" @click="sendMessage">
@@ -717,6 +719,17 @@ function buildRecoveryContext(originalText) {
   ].join('\n')
 }
 
+function createEmptyPreviewState() {
+  return {
+    mode: 'empty',
+    html: '',
+    url: '',
+    code: { lang: '', content: '' },
+    frameState: 'idle',
+    urlLoadError: false,
+  }
+}
+
 // ── Right panel state ──────────────────────────────────────────
 const previewMode = ref('empty')
 const previewHtml = ref('')
@@ -817,6 +830,64 @@ const workspaceFlatNodes = computed(() => {
   walk(root, 0)
   return nodes
 })
+
+function snapshotPreviewState() {
+  return {
+    mode: previewMode.value,
+    html: previewHtml.value,
+    url: previewUrl.value,
+    code: { ...previewCode.value },
+    frameState: previewFrameState.value,
+    urlLoadError: urlLoadError.value,
+  }
+}
+
+function applyPreviewState(state) {
+  const nextState = state || createEmptyPreviewState()
+  previewMode.value = nextState.mode || 'empty'
+  previewHtml.value = nextState.html || ''
+  previewUrl.value = normalizeWorkshopPreviewUrl(nextState.url || '')
+  previewCode.value = {
+    lang: nextState.code?.lang || '',
+    content: nextState.code?.content || '',
+  }
+  previewFrameState.value = nextState.frameState || (previewUrl.value || previewHtml.value ? 'loading' : 'idle')
+  urlLoadError.value = Boolean(nextState.urlLoadError)
+}
+
+function preparePreviewForPendingRequest(previousState) {
+  if (previousState?.mode && previousState.mode !== 'empty') {
+    previewFrameState.value = 'loading'
+    urlLoadError.value = false
+    return
+  }
+  applyPreviewState(createEmptyPreviewState())
+}
+
+function workspaceTreeHasFiles(root) {
+  if (!root || typeof root !== 'object') return false
+  if (root.type === 'file') return true
+  const children = Array.isArray(root.children) ? root.children : []
+  return children.some((child) => workspaceTreeHasFiles(child))
+}
+
+async function canAutoRecoverCurrentWorkspace() {
+  if (generationMode.value !== 'vite') return false
+  if (!currentWorkspaceRequest.value.ready) return false
+  if (!agentDoDebug.value.sessionId) return false
+
+  if (workspaceTreeHasFiles(workspaceTreeRoot.value)) {
+    return true
+  }
+
+  try {
+    const data = await fetchAgentDoWorkspaceTree(currentWorkspaceRequest.value)
+    return workspaceTreeHasFiles(data?.root)
+  } catch (error) {
+    console.warn('workspace recovery probe failed:', error)
+    return false
+  }
+}
 
 function resetWorkspaceBrowser() {
   workspaceTreeLoading.value = false
@@ -2497,6 +2568,7 @@ async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || busy.value) return
 
+  const previousPreviewState = snapshotPreviewState()
   const title = extractTitle(text)
   if (title) chatTitle.value = title
 
@@ -2532,9 +2604,7 @@ async function sendMessage() {
     userScrolledUp.value = false
     newChunksWhileScrolledUp.value = false
     startElapsedTimer()
-    previewHtml.value = ''
-    previewMode.value = 'empty'
-    previewFrameState.value = 'idle'
+    preparePreviewForPendingRequest(previousPreviewState)
 
     const conversationId = currentConversationId.value || `conv-${Date.now()}`
     const username = currentUser.value?.username || 'workshop_guest'
@@ -2561,6 +2631,7 @@ async function sendMessage() {
           previewUrl.value = maybeResult.url
           previewMode.value = 'url'
           previewFrameState.value = 'loading'
+          urlLoadError.value = false
           iframeKey.value++
         }
         await nextTick()
@@ -2571,7 +2642,9 @@ async function sendMessage() {
 
     let { attemptResult: finalResult, attemptStreamError: streamErrorMessage } = await runAgentDoAttempt(text)
 
-    if (generationMode.value === 'vite' && streamErrorMessage) {
+    const allowRecovery = streamErrorMessage ? await canAutoRecoverCurrentWorkspace() : false
+
+    if (generationMode.value === 'vite' && streamErrorMessage && allowRecovery) {
       agentDoLive.value.steps.push({
         id: `recovery-${Date.now()}`,
         stage: 'repair',
@@ -2585,6 +2658,12 @@ async function sendMessage() {
       if (!finalResult && recovery.attemptStreamError) {
         streamErrorMessage = recovery.attemptStreamError
       }
+    } else if (generationMode.value === 'vite' && streamErrorMessage && !allowRecovery) {
+      agentDoLive.value.steps.push({
+        id: `recovery-skip-${Date.now()}`,
+        stage: 'repair',
+        content: '检测到流式中断，但当前工作区还没有可继续修复的文件，已跳过自动续修以避免重建默认脚手架。',
+      })
     }
 
     agentDoDebug.value.requestCompletedAt = Date.now()
@@ -2620,6 +2699,7 @@ async function sendMessage() {
     await nextTick()
     forceScrollBottom()
   } catch (_error) {
+    applyPreviewState(previousPreviewState)
     stopElapsedTimer()
     assistantMsg.streamingLive = false
     assistantMsg.agentDoTrace = buildAgentDoTraceSnapshot()
@@ -3843,33 +3923,52 @@ onBeforeUnmount(() => {
 .mode-switch {
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  padding: 3px;
-  border-radius: 11px;
-  background: var(--bg-card, rgba(255,255,255,0.06));
-  border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.1));
+  gap: 4px;
+  height: 42px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .mode-switch__option {
-  min-width: 58px;
+  min-width: 84px;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-secondary, #9ca3af);
   cursor: pointer;
-  font-size: 0.76rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 .mode-switch__option:hover {
   color: var(--text-primary, #f3f4f6);
+  background: rgba(255,255,255,0.06);
 }
 .mode-switch__option--active {
-  background: rgba(99,102,241,0.22);
+  background: linear-gradient(180deg, rgba(99,102,241,0.28), rgba(79,70,229,0.22));
   color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(129,140,248,0.24);
+  box-shadow: inset 0 0 0 1px rgba(165,180,252,0.32), 0 6px 16px rgba(79,70,229,0.18);
+}
+.mode-switch__label {
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.mode-switch__hint {
+  font-size: 0.64rem;
+  line-height: 1;
+  color: rgba(255,255,255,0.58);
+}
+.mode-switch__option--active .mode-switch__hint {
+  color: rgba(255,255,255,0.84);
 }
 
 .results-panel {
