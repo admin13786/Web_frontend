@@ -244,6 +244,7 @@ export async function* streamPreviewWithAgentDo(payload) {
   }
 }
 
+/* [容器池功能暂时禁用]
 export async function fetchAgentDoSandboxPool() {
   const response = await fetch(`${API_BASE}/agent-do/sandbox-pool`, {
     method: 'GET',
@@ -272,6 +273,7 @@ export async function fetchAgentDoSandboxPool() {
     reclaimedSandboxes: Array.isArray(data?.reclaimedSandboxes) ? data.reclaimedSandboxes : [],
   }
 }
+*/
 
 export async function fetchAgentDoWorkspaceTree({ username, conversationId }) {
   const response = await fetch(

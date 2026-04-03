@@ -298,6 +298,7 @@
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             </svg>
           </button>
+          <!-- [容器池功能暂时禁用]
           <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="查看沙箱池状态" @click="toggleSandboxPool">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="7" height="7" rx="1.5"/>
@@ -306,6 +307,7 @@
               <path d="M17.5 15v6M14.5 18h6"/>
             </svg>
           </button>
+          -->
           <button class="icon-btn" :class="{ 'icon-btn--active': showAgentDoDebug }" title="切换 Agent-Do 调试信息" @click="toggleAgentDoDebug">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="16 18 22 12 16 6"/>
@@ -417,6 +419,7 @@
           </div>
 
           <template v-else>
+        <!-- [容器池功能暂时禁用]
         <div v-if="showSandboxPool" class="sandbox-pool-panel">
           <div class="sandbox-pool-header">
             <div>
@@ -453,7 +456,8 @@
             </div>
           </div>
         </div>
-        <div v-else-if="showAgentDoDebug" class="debug-panel">
+        -->
+        <div v-if="showAgentDoDebug" class="debug-panel">
           <div class="debug-panel-header">
             <span class="debug-panel-title">Agent-Do 调试信息</span>
           </div>
@@ -593,7 +597,7 @@ import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
-  fetchAgentDoSandboxPool,
+  // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
   fetchAgentDoWorkspaceFile,
   fetchAgentDoWorkspaceTree,
   normalizeWorkshopPreviewUrl,
@@ -683,7 +687,7 @@ const codeCopied = ref(false)
 const urlLoadError = ref(false)
 const previewFrameState = ref('idle')
 const showAgentDoDebug = ref(false)
-const showSandboxPool = ref(false)
+// const showSandboxPool = ref(false) // [容器池功能暂时禁用]
 const showWorkspaceFiles = ref(false)
 const agentDoDebug = ref({
   requestPayload: null,
@@ -707,6 +711,7 @@ const agentDoLive = ref({
   reasoning: '',
   answer: '',
 })
+/* [容器池功能暂时禁用]
 const sandboxPoolLoading = ref(false)
 const sandboxPoolError = ref('')
 const sandboxPool = ref({
@@ -717,6 +722,7 @@ const sandboxPool = ref({
   activeSandboxes: [],
   reclaimedSandboxes: [],
 })
+*/
 const workspaceActiveView = ref('preview')
 const workspaceTreeLoading = ref(false)
 const workspaceTreeError = ref('')
@@ -905,7 +911,7 @@ function handleWorkspaceNodeClick(node) {
 async function toggleWorkspaceFiles() {
   showWorkspaceFiles.value = !showWorkspaceFiles.value
   if (!showWorkspaceFiles.value) return
-  showSandboxPool.value = false
+  // showSandboxPool.value = false // [容器池功能暂时禁用]
   showAgentDoDebug.value = false
   await loadWorkspaceTree()
 }
@@ -1536,6 +1542,7 @@ function buildAgentDoTraceSnapshot() {
   }))
 }
 
+/* [容器池功能暂时禁用]
 async function loadSandboxPool() {
   sandboxPoolLoading.value = true
   sandboxPoolError.value = ''
@@ -1556,11 +1563,12 @@ async function toggleSandboxPool() {
     await loadSandboxPool()
   }
 }
+*/
 
 function toggleAgentDoDebug() {
   showAgentDoDebug.value = !showAgentDoDebug.value
   if (showAgentDoDebug.value) {
-    showSandboxPool.value = false
+    // showSandboxPool.value = false // [容器池功能暂时禁用]
     showWorkspaceFiles.value = false
   }
 }
@@ -1781,6 +1789,7 @@ function formatConversationTime(raw) {
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+/* [容器池功能暂时禁用]
 function formatPoolTime(raw) {
   if (!raw) return '-'
   const date = new Date(raw)
@@ -1810,6 +1819,7 @@ function formatReclaimReason(reason) {
   }
   return map[reason] || reason || '-'
 }
+*/
 
 function formatAgentDoStage(stage) {
   const map = {
@@ -3992,6 +4002,7 @@ onBeforeUnmount(() => {
   padding: 16px;
 }
 
+/* [容器池功能暂时禁用]
 .sandbox-pool-panel {
   flex: 1;
   min-height: 0;
@@ -4104,6 +4115,7 @@ onBeforeUnmount(() => {
   color: rgba(255,255,255,0.52);
   font-size: 0.84rem;
 }
+*/
 
 .debug-panel-header {
   display: flex;
@@ -4675,8 +4687,10 @@ onBeforeUnmount(() => {
     border-radius: 22px;
   }
 
+  /* [容器池功能暂时禁用]
   .sandbox-pool-grid {
     grid-template-columns: 1fr;
   }
+  */
 }
 </style>
