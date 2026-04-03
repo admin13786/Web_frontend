@@ -5,7 +5,8 @@ WORKDIR /app
 
 # 先复制依赖文件，利用 Docker 缓存
 COPY package.json package-lock.json ./
-RUN npm ci
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY} && npm ci
 
 # 再复制源码并构建（构建时可传入后端 API 地址）
 COPY . .
@@ -24,9 +25,12 @@ FROM nginx:alpine
 
 # 从构建阶段拷贝产物
 COPY --from=builder /app/dist /usr/share/nginx/html
-# 默认 nginx.conf（Workshop 走宿主机 5000）；Compose 联调时传 --build-arg NGINX_CONF=nginx.compose.conf
+# 默认 nginx.conf；Compose 联调时可传 --build-arg NGINX_CONF=nginx.compose.conf
 ARG NGINX_CONF=nginx.conf
-COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
+COPY ${NGINX_CONF} /etc/nginx/templates/default.conf.template
+COPY docker-entrypoint.d/99-render-nginx-config.sh /docker-entrypoint.d/99-render-nginx-config.sh
+
+RUN chmod +x /docker-entrypoint.d/99-render-nginx-config.sh
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
