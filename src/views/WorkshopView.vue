@@ -265,15 +265,26 @@
           @input="autoResize"
           ref="textareaEl"
         ></textarea>
-        <button class="mic-btn" :class="{ recording: isRecording }" :title="isRecording ? '停止录音' : '语音输入'" @click="toggleRecording">
-          <svg v-if="!isRecording" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="2" width="6" height="12" rx="3"/>
-            <path d="M5 10a7 7 0 0 0 14 0M12 19v3M8 22h8"/>
-          </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-        </button>
+        <div class="mode-switch" role="tablist" aria-label="生成模式">
+          <button
+            type="button"
+            class="mode-switch__option"
+            :class="{ 'mode-switch__option--active': generationMode === 'single_html' }"
+            title="使用单个 HTML 文件生成"
+            @click="setGenerationMode('single_html')"
+          >
+            HTML
+          </button>
+          <button
+            type="button"
+            class="mode-switch__option"
+            :class="{ 'mode-switch__option--active': generationMode === 'vite' }"
+            title="使用 Vite 多文件工程生成"
+            @click="setGenerationMode('vite')"
+          >
+            Vite
+          </button>
+        </div>
         <button class="send-btn" :disabled="!inputText.trim() || busy" @click="sendMessage">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
@@ -657,6 +668,8 @@ function allocMessageKey() {
 
 const messages = ref([])
 const inputText = ref('')
+const WORKSHOP_MODE_STORAGE_KEY = 'workshop:generation-mode'
+const generationMode = ref(loadGenerationMode())
 /** SSE：给用户看的说明（Markdown） */
 const streamingFriendly = ref('')
 /** SSE：HTML 源码（转义后展示） */
@@ -676,6 +689,33 @@ const editingTitle = ref('')
 let historyHydrating = false
 let persistTimer = null
 const historyReady = ref(false)
+
+function loadGenerationMode() {
+  if (typeof window === 'undefined') return 'single_html'
+  const saved = window.localStorage.getItem(WORKSHOP_MODE_STORAGE_KEY)
+  return saved === 'vite' ? 'vite' : 'single_html'
+}
+
+function buildModeSystemPrompt(mode) {
+  if (mode === 'vite') {
+    return '你是资深前端开发者。请使用 Vite 多文件工程实现需求，但默认优先选择 vanilla Vite，小而稳地组织文件。除非用户明确要求，否则不要擅自切到 React、Vue 或 TypeScript 重工程方案。请合理拆分 index.html、src/main.js、游戏核心模块和样式文件，保证生成结果可以直接运行，并在结束前自行检查关键文件是否补齐。'
+  }
+  return '你是资深前端开发者。对于游戏、动画、工具页面等纯前端需求，直接生成单个 index.html（内联所有 JS/CSS），不要创建 npm 项目。只有用户明确要求框架时才用 Vite。追求一步到位，减少文件操作次数。'
+}
+
+function setGenerationMode(mode) {
+  generationMode.value = mode === 'vite' ? 'vite' : 'single_html'
+}
+
+function buildRecoveryContext(originalText) {
+  return [
+    '上一轮生成在同一个 workspace 中途被打断了。',
+    '不要重新初始化项目，不要重建脚手架。',
+    '请直接基于当前已有文件继续完善，补齐缺失的入口、核心逻辑、样式和资源引用，直到项目能正确运行并符合原始需求。',
+    '如果发现选错了技术栈，请在保留当前 workspace 的前提下做最小必要调整。',
+    `原始需求：${originalText}`,
+  ].join('\n')
+}
 
 // ── Right panel state ──────────────────────────────────────────
 const previewMode = ref('empty')
@@ -1949,28 +1989,6 @@ function copyHtmlSegment(text, id) {
   })
 }
 
-// ── Voice input ────────────────────────────────────────────────
-const isRecording = ref(false)
-let recognition = null
-
-function toggleRecording() {
-  if (isRecording.value) {
-    recognition && recognition.stop()
-    isRecording.value = false
-    return
-  }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-  if (!SR) { alert('浏览器不支持语音识别'); return }
-  recognition = new SR()
-  recognition.lang = 'zh-CN'
-  recognition.continuous = false
-  recognition.interimResults = false
-  recognition.onresult = (e) => { inputText.value += e.results[0][0].transcript; autoResize() }
-  recognition.onend = () => { isRecording.value = false }
-  recognition.start()
-  isRecording.value = true
-}
-
 // ── Textarea auto-resize ───────────────────────────────────────
 function autoResize() {
   const el = textareaEl.value
@@ -2048,6 +2066,23 @@ function buildAgentDoChatMarkdown({ answer, previewUrl, elapsed } = {}) {
     sections.push(`已完成，耗时 ${elapsed}。`)
   }
   return sections.join('\n\n').trim()
+}
+
+function formatAcceptanceSummary(acceptance) {
+  if (!acceptance || typeof acceptance !== 'object') return ''
+  const finalAcceptance = acceptance.acceptance || acceptance
+  const issues = Array.isArray(finalAcceptance.issues) ? finalAcceptance.issues : []
+  const warnings = Array.isArray(finalAcceptance.warnings) ? finalAcceptance.warnings : []
+  const rounds = Number(acceptance.repairRoundsUsed || 0)
+  if (acceptance.passed) {
+    return rounds > 0
+      ? `已通过浏览器自动验收，并自动修复 ${rounds} 轮。`
+      : '已通过浏览器自动验收。'
+  }
+  const lead = issues[0] || warnings[0] || '自动验收仍未通过'
+  return rounds > 0
+    ? `自动修复 ${rounds} 轮后仍有问题：${lead}`
+    : `自动验收未通过：${lead}`
 }
 
 function buildAgentDoAssistantSegments({ previewUrl, elapsed } = {}) {
@@ -2223,6 +2258,16 @@ function applyAgentDoStreamEvent(event) {
     agentDoDebug.value.sessionId = event.agentDoSessionId || agentDoDebug.value.sessionId
     agentDoDebug.value.workspacePath = event.workspacePath || agentDoDebug.value.workspacePath
     agentDoDebug.value.previewUrl = event.url || ''
+    if (event.acceptance) {
+      const acceptanceText = formatAcceptanceSummary(event.acceptance)
+      if (acceptanceText) {
+        agentDoLive.value.steps.push({
+          id: `acceptance-${Date.now()}`,
+          stage: 'acceptance',
+          content: acceptanceText,
+        })
+      }
+    }
     agentDoLive.value.steps.push({
       id: `result-${Date.now()}`,
       stage: 'result',
@@ -2234,7 +2279,17 @@ function applyAgentDoStreamEvent(event) {
 
   if (event.type === 'error') {
     agentDoDebug.value.lastError = event.content || 'Agent-Do 流式生成失败'
-    throw new Error(event.content || 'Agent-Do 流式生成失败')
+    markAgentDoStage('error')
+    agentDoLive.value.steps.push({
+      id: `error-${Date.now()}`,
+      stage: 'error',
+      content: event.content || 'Agent-Do 流式生成出现异常，正在继续等待结果...',
+    })
+    syncAgentDoStreamingPlaceholder('生成过程中出现异常，正在尝试继续完成预览...')
+    return {
+      type: 'stream_error',
+      error: event.content || 'Agent-Do 流式生成失败',
+    }
   }
 
   return null
@@ -2461,10 +2516,11 @@ async function sendMessage() {
   resetAgentDoDebug()
   const requestPayload = {
     context: text,
-    systemPrompt: '浣犳槸璧勬繁鍓嶇寮€鍙戣€呫€傚浜庢父鎴忋€佸姩鐢汇€佸伐鍏烽〉闈㈢瓑绾墠绔渶姹傦紝鐩存帴鐢熸垚鍗曚釜 index.html锛堝唴鑱旀墍鏈?JS/CSS锛夛紝涓嶈鍒涘缓 npm 椤圭洰銆傚彧鏈夌敤鎴锋槑纭姹傛鏋舵椂鎵嶇敤 Vite銆傝拷姹備竴姝ュ埌浣嶏紝鍑忓皯鏂囦欢鎿嶄綔娆℃暟銆?',
+    systemPrompt: buildModeSystemPrompt(generationMode.value),
     conversationId: currentConversationId.value || `conv-${Date.now()}`,
     username: currentUser.value?.username || 'workshop_guest',
     title: title || chatTitle.value || 'Workshop Project',
+    generationMode: generationMode.value,
   }
   agentDoDebug.value.requestPayload = requestPayload
   agentDoDebug.value.requestStartedAt = Date.now()
@@ -2480,37 +2536,85 @@ async function sendMessage() {
     previewMode.value = 'empty'
     previewFrameState.value = 'idle'
 
-    let finalResult = null
-    for await (const event of streamPreviewWithAgentDo({
-      context: text,
-      systemPrompt: '你是资深前端开发者。对于游戏、动画、工具页面等纯前端需求，直接生成单个 index.html（内联所有 JS/CSS），不要创建 npm 项目。只有用户明确要求框架时才用 Vite。追求一步到位，减少文件操作次数。',
-      conversationId: currentConversationId.value || `conv-${Date.now()}`,
-      username: currentUser.value?.username || 'workshop_guest',
-      title: title || chatTitle.value || 'Workshop Project',
-    })) {
-      const maybeResult = applyAgentDoStreamEvent(event)
-      if (maybeResult?.url) {
-        finalResult = maybeResult
-        previewUrl.value = maybeResult.url
-        previewMode.value = 'url'
-        previewFrameState.value = 'loading'
-        iframeKey.value++
+    const conversationId = currentConversationId.value || `conv-${Date.now()}`
+    const username = currentUser.value?.username || 'workshop_guest'
+    const requestTitle = title || chatTitle.value || 'Workshop Project'
+    const systemPrompt = buildModeSystemPrompt(generationMode.value)
+
+    async function runAgentDoAttempt(attemptContext) {
+      let attemptResult = null
+      let attemptStreamError = ''
+      for await (const event of streamPreviewWithAgentDo({
+        context: attemptContext,
+        systemPrompt,
+        conversationId,
+        username,
+        title: requestTitle,
+        generationMode: generationMode.value,
+      })) {
+        const maybeResult = applyAgentDoStreamEvent(event)
+        if (maybeResult?.type === 'stream_error') {
+          attemptStreamError = maybeResult.error || attemptStreamError
+        }
+        if (maybeResult?.url) {
+          attemptResult = maybeResult
+          previewUrl.value = maybeResult.url
+          previewMode.value = 'url'
+          previewFrameState.value = 'loading'
+          iframeKey.value++
+        }
+        await nextTick()
+        scrollBottom()
       }
-      await nextTick()
-      scrollBottom()
+      return { attemptResult, attemptStreamError }
+    }
+
+    let { attemptResult: finalResult, attemptStreamError: streamErrorMessage } = await runAgentDoAttempt(text)
+
+    if (generationMode.value === 'vite' && streamErrorMessage) {
+      agentDoLive.value.steps.push({
+        id: `recovery-${Date.now()}`,
+        stage: 'repair',
+        content: '检测到本轮生成中断，正在基于当前工作区自动补齐缺失文件...',
+      })
+      syncAgentDoStreamingPlaceholder('检测到生成中断，正在自动继续完善当前 Vite 项目...')
+      const recovery = await runAgentDoAttempt(buildRecoveryContext(text))
+      if (recovery.attemptResult?.url) {
+        finalResult = recovery.attemptResult
+      }
+      if (!finalResult && recovery.attemptStreamError) {
+        streamErrorMessage = recovery.attemptStreamError
+      }
     }
 
     agentDoDebug.value.requestCompletedAt = Date.now()
     stopElapsedTimer()
     assistantMsg.streamingLive = false
-    assistantMsg.segments = buildAgentDoAssistantSegments({
+    const baseSegments = buildAgentDoAssistantSegments({
       previewUrl: finalResult?.url,
       elapsed: formattedElapsed.value,
     })
+    const extraSegments = []
+    const acceptanceSummary = formatAcceptanceSummary(finalResult?.acceptance)
+    if (streamErrorMessage) {
+      extraSegments.push({
+        kind: 'text',
+        content: '⚠️ 本轮生成中途出现过异常，当前预览可能是自动补全后的结果。如果效果仍不对，继续在当前对话里让我“基于现有工程继续修正”会更稳。',
+      })
+    }
+    if (acceptanceSummary) {
+      extraSegments.push({
+        kind: 'text',
+        content: finalResult?.acceptance?.passed
+          ? `✅ ${acceptanceSummary}`
+          : `⚠️ ${acceptanceSummary}`,
+      })
+    }
+    assistantMsg.segments = [...extraSegments, ...baseSegments]
     assistantMsg.time = nowTime()
     streamingSegments.value = []
     if (!finalResult) {
-      throw new Error('Agent-Do 未返回预览地址')
+      throw new Error(streamErrorMessage || 'Agent-Do 未返回预览地址')
     }
     await loadWorkspaceTree(true)
     await nextTick()
@@ -2581,6 +2685,15 @@ onMounted(async () => {
     applyConversation(fallback)
   }
 })
+
+watch(
+  () => generationMode.value,
+  (mode) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(WORKSHOP_MODE_STORAGE_KEY, mode)
+  },
+  { immediate: true },
+)
 
 watch(
   [messages, chatTitle, previewMode, previewHtml, previewUrl, previewCode],
@@ -3718,21 +3831,46 @@ onBeforeUnmount(() => {
 .input-area textarea:focus { border-color: var(--accent, #6366f1); }
 .input-area textarea::placeholder { color: var(--text-secondary, #666); }
 
-.send-btn, .mic-btn {
-  width: 36px; height: 36px; border-radius: 9px; border: none;
+.send-btn {
+  height: 36px; border-radius: 9px; border: none;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: background 0.15s;
 }
+.send-btn { width: 36px; }
 .send-btn { background: var(--accent, #6366f1); color: #fff; }
 .send-btn:hover:not(:disabled) { background: #4f46e5; }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.mic-btn {
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 3px;
+  border-radius: 11px;
   background: var(--bg-card, rgba(255,255,255,0.06));
-  color: var(--text-secondary, #888);
   border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.1));
 }
-.mic-btn:hover { color: var(--text-primary, #e8e8f0); }
-.mic-btn.recording { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.mode-switch__option {
+  min-width: 58px;
+  height: 100%;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #9ca3af);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+.mode-switch__option:hover {
+  color: var(--text-primary, #f3f4f6);
+}
+.mode-switch__option--active {
+  background: rgba(99,102,241,0.22);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(129,140,248,0.24);
+}
 
 .results-panel {
   flex: 1;

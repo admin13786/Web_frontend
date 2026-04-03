@@ -185,6 +185,7 @@ export async function generatePreviewWithAgentDo(payload) {
       conversation_id: payload.conversationId,
       username: payload.username,
       title: payload.title,
+      generation_mode: payload.generationMode,
     }),
   })
 
@@ -220,6 +221,7 @@ export async function* streamPreviewWithAgentDo(payload) {
       conversation_id: payload.conversationId,
       username: payload.username,
       title: payload.title,
+      generation_mode: payload.generationMode,
     }),
   })
 
