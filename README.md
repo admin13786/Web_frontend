@@ -61,3 +61,4 @@ npm run dev
 1. 登录页 `/` → 输入任意用户名密码点击登录
 2. 主页 `/home` → 点击左侧 Channel 卡片
 3. 排行榜 `/channel` → 条目旁「讲解」跳转 OpenMAIC 预填；「返回主页」回到工字型主页
+CI/CD Test - Tue Apr  7 17:19:37 CST 2026
