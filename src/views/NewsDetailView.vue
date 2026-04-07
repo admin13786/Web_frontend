@@ -1,7 +1,7 @@
 <template>
   <div class="news-page">
     <div class="news-header">
-      <router-link to="/channel" class="back-link">← 返回频道排行榜</router-link>
+      <router-link to="/channel" class="back-link">← 返回AI新闻早咖啡</router-link>
     </div>
 
     <div v-if="loading" class="load-state">加载中…</div>
@@ -249,7 +249,7 @@ watch(
 
 .news-title {
   margin: 0 0 12px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.25;
@@ -371,4 +371,3 @@ watch(
   text-decoration: underline;
 }
 </style>
-

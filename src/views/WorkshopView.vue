@@ -1,6 +1,6 @@
 <template>
   <div class="workshop" ref="workshopEl">
-    <aside class="history-sidebar" :class="{ expanded: sidebarExpanded }">
+    <aside v-if="false" class="history-sidebar" :class="{ expanded: sidebarExpanded }">
       <div class="sidebar-top">
         <button type="button" class="sidebar-icon-btn" :title="sidebarExpanded ? '收起侧栏' : '展开侧栏'" @click="toggleSidebar">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -32,11 +32,11 @@
           </div>
         </div>
 
-        <div class="sidebar-section">
+        <div v-if="false" class="sidebar-section">
           <div class="sidebar-section-title">对话</div>
           <div class="sidebar-conversation-list">
             <div
-              v-for="item in conversationList"
+              v-for="item in pagedConversationList"
               :key="item.id"
               class="sidebar-conversation-item"
               :class="{ active: item.id === currentConversationId }"
@@ -86,6 +86,28 @@
                 ×
               </button>
             </div>
+            <div v-if="!pagedConversationList.length" class="sidebar-conversation-empty">
+              暂无最近对话
+            </div>
+          </div>
+          <div v-if="totalConversationPages > 1" class="sidebar-conversation-pagination">
+            <button
+              type="button"
+              class="sidebar-page-btn"
+              :disabled="conversationPage === 0"
+              @click="goToPreviousConversationPage"
+            >
+              上一页
+            </button>
+            <span class="sidebar-page-indicator">{{ conversationPage + 1 }} / {{ totalConversationPages }}</span>
+            <button
+              type="button"
+              class="sidebar-page-btn"
+              :disabled="conversationPage >= totalConversationPages - 1"
+              @click="goToNextConversationPage"
+            >
+              下一页
+            </button>
           </div>
         </div>
 
@@ -117,7 +139,7 @@
           </div>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" :title="sidebarExpanded ? '收起历史侧栏' : '展开历史侧栏'" @click="toggleSidebar">
+          <button v-if="false" class="icon-btn" :title="sidebarExpanded ? '收起历史侧栏' : '展开历史侧栏'" @click="toggleSidebar">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="7" x2="20" y2="7" />
               <line x1="4" y1="12" x2="20" y2="12" />
@@ -171,7 +193,7 @@
                 <template v-if="streamingSegments.length">
                   <template v-for="(seg, si) in streamingSegments" :key="`live-${si}`">
                     <div v-if="seg.kind === 'text'" class="agent-text">
-                      <MarkdownView :content="seg.content" mode="dark" />
+                      <MarkdownView :content="seg.content" :mode="markdownMode" />
                     </div>
                   </template>
                 </template>
@@ -200,7 +222,7 @@
               <template v-else>
                 <template v-for="(seg, si) in msg.segments" :key="si">
                   <div v-if="seg.kind === 'text'" class="agent-text">
-                    <MarkdownView :content="seg.content" mode="dark" />
+                    <MarkdownView :content="seg.content" :mode="markdownMode" />
                   </div>
                   <div v-else-if="seg.kind === 'html_source'" class="agent-html-source">
                     <div class="stream-code-header stream-code-header--static">
@@ -223,7 +245,7 @@
                     </div>
                     <div v-if="seg.open" class="agent-card-body">
                       <pre v-if="seg.type === 'bash'" class="bash-block"><code>{{ seg.content }}</code></pre>
-                      <MarkdownView v-else :content="seg.content" mode="dark" />
+                      <MarkdownView v-else :content="seg.content" :mode="markdownMode" />
                     </div>
                   </div>
                 </template>
@@ -607,7 +629,7 @@
 
 <script setup>
 import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
   // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
@@ -625,11 +647,15 @@ import {
 } from '../api/workshopConversations.js'
 import WorkshopStreamProgress from '../components/WorkshopStreamProgress.vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import { useTheme } from '../composables/useTheme'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
 import { createEmptyConversation } from '../utils/workshopHistory.js'
 
 const router = useRouter()
+const route = useRoute()
+const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
+const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
 const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '未登录')
 const sidebarExpanded = ref(false)
 
@@ -688,10 +714,21 @@ const conversationList = ref([])
 const currentConversationId = ref('')
 const editingConversationId = ref('')
 const editingTitle = ref('')
+const conversationPage = ref(0)
 let historyHydrating = false
 let persistTimer = null
 const historyReady = ref(false)
 let persistInFlight = null
+const CONVERSATIONS_PER_PAGE = 5
+
+const totalConversationPages = computed(() => {
+  return Math.max(1, Math.ceil(conversationList.value.length / CONVERSATIONS_PER_PAGE))
+})
+
+const pagedConversationList = computed(() => {
+  const start = conversationPage.value * CONVERSATIONS_PER_PAGE
+  return conversationList.value.slice(start, start + CONVERSATIONS_PER_PAGE)
+})
 
 function loadGenerationMode() {
   if (typeof window === 'undefined') return 'single_html'
@@ -1702,6 +1739,50 @@ function buildConversationSnapshot() {
   }
 }
 
+function clampConversationPage(page) {
+  const maxPage = Math.max(0, totalConversationPages.value - 1)
+  conversationPage.value = Math.min(Math.max(page, 0), maxPage)
+}
+
+function syncConversationPageById(id) {
+  if (!id) {
+    clampConversationPage(0)
+    return
+  }
+  const index = conversationList.value.findIndex((item) => item.id === id)
+  if (index === -1) {
+    clampConversationPage(conversationPage.value)
+    return
+  }
+  clampConversationPage(Math.floor(index / CONVERSATIONS_PER_PAGE))
+}
+
+function goToPreviousConversationPage() {
+  clampConversationPage(conversationPage.value - 1)
+}
+
+function goToNextConversationPage() {
+  clampConversationPage(conversationPage.value + 1)
+}
+
+function syncConversationRoute(id) {
+  const nextId = String(id || '').trim()
+  const currentId = String(route.query.cid || '').trim()
+  if (!nextId || currentId === nextId) return
+  router.replace({
+    path: '/workshop',
+    query: {
+      ...route.query,
+      cid: nextId,
+    },
+  })
+}
+
+function emitWorkshopHistoryChanged() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('workshop-history-changed'))
+}
+
 function applyConversation(conversation) {
   if (persistTimer) {
     clearTimeout(persistTimer)
@@ -1710,6 +1791,8 @@ function applyConversation(conversation) {
   cancelRename()
   historyHydrating = true
   currentConversationId.value = conversation.id
+  syncConversationPageById(conversation.id)
+  syncConversationRoute(conversation.id)
   chatTitle.value = conversation.title || '新对话'
   messages.value = cloneMessages(conversation.messages || [])
   previewMode.value = conversation.preview?.mode || 'empty'
@@ -1791,8 +1874,10 @@ async function createNewConversation() {
   await flushPendingPersist()
   const conversation = createEmptyConversation()
   conversationList.value = [conversation, ...conversationList.value]
+  syncConversationPageById(conversation.id)
   applyConversation(conversation)
   await persistConversations()
+  emitWorkshopHistoryChanged()
   sidebarExpanded.value = true
   startRename(conversation.id)
 }
@@ -1821,7 +1906,10 @@ async function deleteConversation(id) {
   conversationList.value = nextList
   if (currentConversationId.value === id && nextList[0]) {
     applyConversation(nextList[0])
+  } else {
+    clampConversationPage(conversationPage.value)
   }
+  emitWorkshopHistoryChanged()
 }
 
 async function loadWorkshopHistory() {
@@ -1831,17 +1919,21 @@ async function loadWorkshopHistory() {
   }
   const conversations = await fetchWorkshopConversations()
   conversationList.value = conversations
-  let current = conversations[0]
+  const routeConversationId = String(route.query.cid || '').trim()
+  let current = conversations.find((item) => item.id === routeConversationId) || conversations[0]
   if (!current) {
     current = createEmptyConversation()
     conversationList.value = [current]
     historyReady.value = true
     applyConversation(current)
     await persistConversations()
+    emitWorkshopHistoryChanged()
     return
   }
+  syncConversationPageById(current.id)
   applyConversation(current)
   historyReady.value = true
+  emitWorkshopHistoryChanged()
 }
 
 async function logout() {
@@ -1909,6 +2001,7 @@ async function commitRename(id) {
     } else {
       await saveWorkshopConversation(nextList[index])
     }
+    emitWorkshopHistoryChanged()
   } catch (e) {
     // 改名先保证前端立即生效；若后端同步失败，保留当前标题，避免用户感觉“没反应”。
     console.error('rename conversation failed:', e)
@@ -2816,6 +2909,32 @@ watch(
   },
 )
 
+watch(
+  () => conversationList.value.length,
+  () => {
+    clampConversationPage(conversationPage.value)
+  },
+)
+
+watch(
+  () => currentConversationId.value,
+  (id) => {
+    syncConversationPageById(id)
+  },
+)
+
+watch(
+  () => route.query.cid,
+  async (id) => {
+    const nextId = String(id || '').trim()
+    if (!nextId || !historyReady.value || nextId === currentConversationId.value) return
+    const conversation = conversationList.value.find((item) => item.id === nextId)
+    if (!conversation) return
+    await flushPendingPersist()
+    applyConversation(conversation)
+  },
+)
+
 onBeforeUnmount(() => {
   stopDrag()
   stopElapsedTimer()
@@ -2829,12 +2948,12 @@ onBeforeUnmount(() => {
   display: flex;
   height: calc(100vh - 48px);
   overflow: hidden;
-  background: var(--bg-base, #0f0f13);
-  color: var(--text-primary, #e8e8f0);
-  font-family: 'Inter', sans-serif;
+  background: var(--workshop-bg);
+  color: var(--text-primary);
+  font-family: var(--font-family-base);
   min-height: 720px;
   border-radius: 28px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--workshop-border);
   box-shadow: var(--shadow-soft);
 }
 
@@ -2842,8 +2961,8 @@ onBeforeUnmount(() => {
   width: 64px;
   flex-shrink: 0;
   height: 100%;
-  background: rgba(24, 24, 28, 0.98);
-  border-right: 1px solid rgba(255,255,255,0.06);
+  background: var(--workshop-panel-strong-bg);
+  border-right: 1px solid var(--workshop-border);
   display: flex;
   flex-direction: column;
   padding: 16px 12px 18px;
@@ -2874,7 +2993,7 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.88);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2922,7 +3041,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-action-row--muted {
-  color: rgba(255,255,255,0.74);
+  color: var(--text-secondary);
 }
 
 .sidebar-action-icon {
@@ -2934,19 +3053,19 @@ onBeforeUnmount(() => {
 .sidebar-user-card {
   padding: 12px 14px;
   border-radius: 18px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--workshop-panel-bg);
+  border: 1px solid var(--workshop-border);
 }
 
 .sidebar-user-label {
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.54);
+  color: var(--text-secondary);
 }
 
 .sidebar-user-name {
   margin-top: 6px;
   font-size: 0.98rem;
-  color: rgba(255,255,255,0.92);
+  color: var(--text-primary);
 }
 
 .sidebar-section {
@@ -2959,29 +3078,31 @@ onBeforeUnmount(() => {
 
 .sidebar-section-title {
   margin-bottom: 14px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: rgba(255,255,255,0.94);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
 }
 
 .sidebar-conversation-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
+  gap: 6px;
   min-height: 0;
 }
 
 .sidebar-conversation-item {
   display: flex;
   align-items: stretch;
-  border-radius: 22px;
+  border-radius: 14px;
   overflow: hidden;
-  background: transparent;
+  background: var(--workshop-panel-bg);
+  border: 1px solid transparent;
 }
 
 .sidebar-conversation-item.active {
-  background: rgba(48, 79, 139, 0.82);
+  background: var(--workshop-hover-bg);
+  border-color: var(--workshop-border);
 }
 
 .sidebar-conversation-main {
@@ -2999,7 +3120,7 @@ onBeforeUnmount(() => {
   color: inherit;
   text-align: left;
   cursor: pointer;
-  padding: 15px 18px;
+  padding: 12px 14px;
 }
 
 .sidebar-conversation-input {
@@ -3007,9 +3128,9 @@ onBeforeUnmount(() => {
   margin: 10px 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(99,102,241,0.42);
-  background: rgba(12,12,16,0.78);
-  color: rgba(255,255,255,0.94);
+  border: 1px solid var(--workshop-input-border);
+  background: var(--workshop-input-bg);
+  color: var(--text-primary);
   font-size: 0.92rem;
   outline: none;
 }
@@ -3023,22 +3144,22 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-conversation-name {
-  font-size: 0.98rem;
-  color: rgba(255,255,255,0.94);
+  font-size: 0.9rem;
+  color: var(--text-primary);
 }
 
 .sidebar-conversation-time {
-  margin-top: 6px;
-  font-size: 0.75rem;
-  color: rgba(255,255,255,0.6);
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 .sidebar-conversation-edit,
 .sidebar-conversation-delete {
-  width: 40px;
+  width: 34px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.46);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -3047,8 +3168,53 @@ onBeforeUnmount(() => {
 
 .sidebar-conversation-edit:hover,
 .sidebar-conversation-delete:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: var(--workshop-hover-bg);
+  color: var(--text-primary);
+}
+
+.sidebar-conversation-empty {
+  padding: 16px 12px;
+  border-radius: 14px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+  background: var(--workshop-panel-bg);
+}
+
+.sidebar-conversation-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sidebar-page-btn {
+  min-width: 64px;
+  border: 1px solid var(--workshop-border);
+  border-radius: 999px;
+  background: var(--workshop-panel-bg);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+
+.sidebar-page-btn:hover:not(:disabled) {
+  background: var(--workshop-hover-bg);
+  border-color: var(--workshop-input-border);
+}
+
+.sidebar-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sidebar-page-indicator {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-footer {
@@ -3063,7 +3229,7 @@ onBeforeUnmount(() => {
 
 .divider {
   width: 4px;
-  background: var(--bg-glass-border, rgba(255,255,255,0.08));
+  background: var(--workshop-border);
   cursor: col-resize;
   flex-shrink: 0;
   transition: background 0.2s;
@@ -3083,7 +3249,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
+  border-bottom: 1px solid var(--workshop-border);
   flex-shrink: 0;
 }
 .chat-header-main {
@@ -3100,29 +3266,29 @@ onBeforeUnmount(() => {
   height: 26px;
   border-radius: 8px;
   border: none;
-  background: rgba(255,255,255,0.04);
-  color: var(--text-secondary, #888);
+  background: var(--workshop-panel-bg);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
 .title-edit-btn:hover {
-  background: rgba(255,255,255,0.08);
-  color: var(--text-primary, #e8e8f0);
+  background: var(--workshop-hover-bg);
+  color: var(--text-primary);
 }
 .chat-subtitle {
   margin-top: 4px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 0.8rem;
 }
 .header-actions { display: flex; gap: 6px; }
 .icon-btn {
   background: none; border: none; cursor: pointer;
-  color: var(--text-secondary, #888); padding: 5px; border-radius: 6px;
+  color: var(--text-secondary); padding: 5px; border-radius: 6px;
   display: flex; align-items: center;
 }
-.icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary, #e8e8f0); }
+.icon-btn:hover { background: var(--workshop-hover-bg); color: var(--text-primary); }
 .icon-btn--active {
   background: rgba(99,102,241,0.18);
   color: var(--accent, #a5b4fc);
@@ -3136,7 +3302,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 16px;
 }
-.empty-hint { text-align: center; color: var(--text-secondary, #888); margin-top: 60px; font-size: 0.9rem; }
+.empty-hint { text-align: center; color: var(--text-secondary); margin-top: 60px; font-size: 0.9rem; }
 
 .message { display: flex; gap: 10px; }
 .message.user { flex-direction: row-reverse; }
@@ -4009,7 +4175,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
+  border-bottom: 1px solid var(--workshop-border);
   flex-shrink: 0;
 }
 .results-title { font-weight: 600; font-size: 0.95rem; }
@@ -4032,15 +4198,15 @@ onBeforeUnmount(() => {
 
 .results-content--with-files {
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
-    rgba(0,0,0,0.08);
+    linear-gradient(180deg, var(--workshop-panel-bg), rgba(255,255,255,0)),
+    var(--workshop-panel-soft-bg);
 }
 
 .workspace-browser {
   width: 280px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255,255,255,0.08);
-  background: rgba(10,10,14,0.72);
+  border-right: 1px solid var(--workshop-border);
+  background: var(--workshop-inset-bg);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -4052,7 +4218,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 14px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--workshop-border);
 }
 
 .workspace-browser-title {
@@ -4063,14 +4229,14 @@ onBeforeUnmount(() => {
 .workspace-browser-subtitle {
   margin-top: 4px;
   font-size: 0.76rem;
-  color: rgba(255,255,255,0.56);
+  color: var(--text-secondary);
   line-height: 1.45;
 }
 
 .workspace-refresh-btn {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.88);
+  border: 1px solid var(--workshop-border);
+  background: var(--workshop-panel-bg);
+  color: var(--text-primary);
   border-radius: 10px;
   padding: 7px 12px;
   font-size: 0.78rem;
@@ -4101,7 +4267,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  color: rgba(255,255,255,0.54);
+  color: var(--text-secondary);
   font-size: 0.84rem;
   text-align: center;
 }
@@ -4117,7 +4283,7 @@ onBeforeUnmount(() => {
   width: 100%;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.86);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4128,18 +4294,18 @@ onBeforeUnmount(() => {
 }
 
 .workspace-tree-node:hover {
-  background: rgba(255,255,255,0.05);
+  background: var(--workshop-hover-bg);
 }
 
 .workspace-tree-node.is-selected {
   background: rgba(99,102,241,0.16);
-  color: rgba(255,255,255,0.98);
+  color: var(--text-primary);
 }
 
 .workspace-tree-caret {
   width: 12px;
   min-width: 12px;
-  color: rgba(255,255,255,0.46);
+  color: var(--text-muted);
 }
 
 .workspace-tree-caret svg {
@@ -4176,15 +4342,15 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--workshop-border);
+  background: var(--workshop-panel-bg);
   flex-shrink: 0;
 }
 
 .results-tab {
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
-  color: rgba(255,255,255,0.7);
+  border: 1px solid var(--workshop-border);
+  background: var(--workshop-panel-bg);
+  color: var(--text-secondary);
   border-radius: 12px;
   padding: 8px 14px;
   font-size: 0.82rem;
@@ -4196,9 +4362,9 @@ onBeforeUnmount(() => {
 }
 
 .results-tab.active {
-  color: rgba(255,255,255,0.96);
-  background: rgba(255,255,255,0.09);
-  border-color: rgba(255,255,255,0.16);
+  color: var(--text-primary);
+  background: var(--workshop-hover-strong-bg);
+  border-color: var(--workshop-input-border);
 }
 
 .file-viewer {
@@ -4880,7 +5046,7 @@ onBeforeUnmount(() => {
 .agentDo-progress-track {
   height: 6px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.06);
+  background: var(--workshop-hover-bg);
   overflow: hidden;
 }
 

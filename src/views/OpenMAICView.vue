@@ -21,9 +21,10 @@
 
       <iframe
         v-else
+        ref="iframeEl"
         :key="frameKey"
         class="openmaic-frame"
-        :src="openmaicUrl"
+        :src="embedUrl"
         title="OpenMAIC"
         @load="handleLoad"
       />
@@ -32,27 +33,71 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useTheme } from '../composables/useTheme'
 import { getOpenMAICAppUrl } from '../config.js'
 
 const openmaicUrl = getOpenMAICAppUrl()
+const { theme } = useTheme()
+const iframeEl = ref(null)
 const frameKey = ref(0)
 const loadState = ref('loading')
+
+const embedUrl = computed(() => {
+  try {
+    const url = new URL(openmaicUrl, window.location.href)
+    url.searchParams.set('theme', theme.value)
+    url.searchParams.set('appearance', theme.value)
+    url.searchParams.set('hostTheme', theme.value)
+    return url.toString()
+  } catch {
+    return openmaicUrl
+  }
+})
+
+const targetOrigin = computed(() => {
+  try {
+    return new URL(openmaicUrl, window.location.href).origin
+  } catch {
+    return '*'
+  }
+})
 
 function reloadFrame() {
   loadState.value = 'loading'
   frameKey.value += 1
 }
 
-function handleLoad() {
-  loadState.value = 'ready'
+function syncIframeTheme() {
+  iframeEl.value?.contentWindow?.postMessage(
+    {
+      type: 'openmaic:set-theme',
+      theme: theme.value,
+    },
+    targetOrigin.value,
+  )
 }
 
-window.setTimeout(() => {
+function handleLoad() {
+  loadState.value = 'ready'
+  syncIframeTheme()
+}
+
+watch(theme, () => {
+  loadState.value = 'loading'
+  frameKey.value += 1
+  syncIframeTheme()
+})
+
+const loadTimeout = window.setTimeout(() => {
   if (loadState.value === 'loading') {
     loadState.value = 'error'
   }
 }, 5000)
+
+onBeforeUnmount(() => {
+  window.clearTimeout(loadTimeout)
+})
 </script>
 
 <style scoped>

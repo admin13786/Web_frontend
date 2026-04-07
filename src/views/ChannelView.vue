@@ -17,10 +17,6 @@
       </div>
     </div>
 
-    <div class="leaderboard-nav">
-      <span class="nav-arrows">‹ ›</span>
-    </div>
-
     <div v-if="loadError" class="load-error">
       <p>{{ loadError }}</p>
       <button type="button" class="retry-btn" @click="fetchAll">重试</button>
@@ -532,7 +528,7 @@ onMounted(fetchAll)
 }
 
 .page-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
@@ -558,19 +554,6 @@ onMounted(fetchAll)
 
 .page-title.title-main:hover {
   color: var(--accent);
-}
-
-.leaderboard-nav {
-  max-width: 1400px;
-  margin: 0 auto 24px;
-  display: flex;
-  justify-content: center;
-}
-
-.nav-arrows {
-  font-size: 1.25rem;
-  color: var(--text-muted);
-  letter-spacing: 0.5em;
 }
 
 .load-error,
@@ -618,7 +601,7 @@ onMounted(fetchAll)
 }
 
 .column-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-secondary);
@@ -739,7 +722,7 @@ onMounted(fetchAll)
 }
 
 .item-rank {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-weight: 700;
   font-size: 1rem;
   color: var(--text-muted);
@@ -829,9 +812,9 @@ onMounted(fetchAll)
 }
 
 .weibo-rank-num {
+  font-family: var(--font-family-display);
   flex-shrink: 0;
   width: 24px;
-  font-family: 'Outfit', sans-serif;
   font-weight: 700;
   font-size: 1rem;
   color: #f97316;

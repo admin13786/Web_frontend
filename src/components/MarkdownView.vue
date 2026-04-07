@@ -53,4 +53,22 @@ defineProps({
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+.md-view--light :deep(.markdown-body) {
+  color: var(--text-primary, #172033);
+}
+
+.md-view--light :deep(.markdown-body a) {
+  color: #4f46e5;
+}
+
+.md-view--light :deep(.markdown-body code) {
+  background: rgba(99, 102, 241, 0.1);
+  color: #3730a3;
+}
+
+.md-view--light :deep(.markdown-body pre) {
+  background: rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
 </style>
