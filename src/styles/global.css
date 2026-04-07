@@ -51,30 +51,3 @@ body {
   min-height: 100vh;
 }
 
-/* 滑动过渡动画 */
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.slide-leave-active {
-  position: absolute;
-  left: 0;
-  right: 0;
-}
-
-.slide-enter-from {
-  opacity: 0;
-  transform: translateX(30px);
-}
-
-.slide-leave-to {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
-.slide-enter-to,
-.slide-leave-from {
-  opacity: 1;
-  transform: translateX(0);
-}

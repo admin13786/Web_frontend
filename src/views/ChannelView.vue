@@ -1,18 +1,17 @@
 <template>
   <div class="channel-page">
     <div class="channel-header">
-      <router-link to="/" class="back-link">← 返回主页</router-link>
       <div class="title-group">
         <template v-if="isMainRanking">
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToMain">商业 · 行业</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToSub">开发者 · 技术</span>
+            <h1 class="page-title title-main" @click="switchToMain">商业 / 行业</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToSub">开发者 / 技术</span>
           </div>
         </template>
         <template v-else>
           <div class="title-row">
-            <h1 class="page-title title-main" @click="switchToSub">开发者 · 技术</h1>
-            <span class="page-title title-sub sub-badge" @click="switchToMain">商业 · 行业</span>
+            <h1 class="page-title title-main" @click="switchToSub">开发者 / 技术</h1>
+            <span class="page-title title-sub sub-badge" @click="switchToMain">商业 / 行业</span>
           </div>
         </template>
       </div>
@@ -44,7 +43,7 @@
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
-              <p class="item-title" @click="openNewsUrl(item)">{{ item.title }}</p>
+              <p class="item-title" @click="openNewsUrl(item)">{{ displayTitle(item.title) }}</p>
               <div
                 class="video-placeholder"
                 role="button"
@@ -57,7 +56,7 @@
                   <img
                     class="cover-image"
                     :src="item.coverUrl"
-                    :alt="item.title"
+                    :alt="displayTitle(item.title)"
                     loading="lazy"
                     @error="onCoverError(item)"
                     @load="onCoverLoad($event, item)"
@@ -96,7 +95,7 @@
           >
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
-              <span class="weibo-rank-title">{{ item.title }}</span>
+              <span class="weibo-rank-title">{{ displayTitle(item.title) }}</span>
             </div>
             <div class="rank-actions" @click.stop>
               <button
@@ -133,7 +132,7 @@
             :enter="{ opacity: 1, y: 0, transition: { duration: 0.4, delay: index * 0.05 } }"
           >
             <div class="item-content">
-              <p class="item-title" @click="openNewsUrl(item)">{{ item.title }}</p>
+              <p class="item-title" @click="openNewsUrl(item)">{{ displayTitle(item.title) }}</p>
               <div
                 class="video-placeholder"
                 role="button"
@@ -146,7 +145,7 @@
                   <img
                     class="cover-image"
                     :src="item.coverUrl"
-                    :alt="item.title"
+                    :alt="displayTitle(item.title)"
                     loading="lazy"
                     @error="onCoverError(item)"
                     @load="onCoverLoad($event, item)"
@@ -185,7 +184,7 @@
           >
             <span class="weibo-rank-num" :class="{ 'rank-top3': item.id <= 3 }">{{ item.id }}</span>
             <div class="weibo-rank-content">
-              <span class="weibo-rank-title">{{ item.title }}</span>
+              <span class="weibo-rank-title">{{ displayTitle(item.title) }}</span>
             </div>
             <div class="rank-actions" @click.stop>
               <button
@@ -255,6 +254,50 @@ function shuffleArray(list) {
     ;[out[i], out[j]] = [out[j], out[i]]
   }
   return out
+}
+
+const titleExactMap = new Map([
+  ['Rakuten fixes issues twice as fast with Codex', 'Rakuten 借助 Codex 将问题修复速度提升至两倍'],
+  ['ClawKeeper为OpenClaw agent运行时构建全栈安全防护', 'ClawKeeper 为 OpenClaw agent 运行时构建全栈安全防护'],
+])
+
+const titlePhraseMap = [
+  ['fixes issues twice as fast with', '借助'],
+  ['twice as fast', '速度提升两倍'],
+  ['for', '面向'],
+  ['launches', '发布'],
+  ['builds', '构建'],
+  ['adds', '新增'],
+  ['agent runtime', 'agent 运行时'],
+  ['full-stack security', '全栈安全防护'],
+  ['open source', '开源'],
+  ['paper:', '论文：'],
+  ['coding agent', '编程 agent'],
+  ['research', '研究'],
+  ['workflow', '工作流'],
+  ['video', '视频'],
+]
+
+function displayTitle(title) {
+  const raw = String(title || '').trim()
+  if (!raw) return ''
+  if (/[\u4e00-\u9fa5]/.test(raw)) return raw
+  if (titleExactMap.has(raw)) return titleExactMap.get(raw)
+
+  let next = raw
+  for (const [from, to] of titlePhraseMap) {
+    next = next.replace(new RegExp(from, 'gi'), to)
+  }
+
+  next = next
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.:;!?])/g, '$1')
+    .replace(/:\s*/g, '：')
+    .replace(/,\s*/g, '，')
+    .replace(/\s*-\s*/g, ' - ')
+    .trim()
+
+  return next
 }
 
 function formatWan(viewsNum) {
@@ -460,28 +503,17 @@ onMounted(fetchAll)
 
 <style scoped>
 .channel-page {
-  min-height: 100vh;
-  padding: 32px 24px;
+  min-height: 100%;
+  padding: 8px 0 0;
 }
 
 .channel-header {
   max-width: 1400px;
   margin: 0 auto 24px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 24px;
-}
-
-.back-link {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 0.95rem;
-  transition: color var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.back-link:hover {
-  color: var(--accent);
 }
 
 .title-group {
@@ -904,6 +936,10 @@ onMounted(fetchAll)
 }
 
 @media (max-width: 768px) {
+  .channel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   .leaderboard-content {
     grid-template-columns: 1fr;
     gap: 16px;

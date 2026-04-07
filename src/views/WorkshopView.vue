@@ -691,6 +691,7 @@ const editingTitle = ref('')
 let historyHydrating = false
 let persistTimer = null
 const historyReady = ref(false)
+let persistInFlight = null
 
 function loadGenerationMode() {
   if (typeof window === 'undefined') return 'single_html'
@@ -1732,33 +1733,41 @@ function applyConversation(conversation) {
 
 async function persistConversations() {
   if (historyHydrating || !historyReady.value || !currentUser.value?.username || !currentConversationId.value) return
-  const snapshot = buildConversationSnapshot()
-  const nextList = [...conversationList.value]
-  const index = nextList.findIndex((item) => item.id === snapshot.id)
-  if (index >= 0) {
-    nextList[index] = {
-      ...nextList[index],
-      ...snapshot,
-      createdAt: nextList[index].createdAt || snapshot.updatedAt,
+  if (persistInFlight) return persistInFlight
+  persistInFlight = (async () => {
+    const snapshot = buildConversationSnapshot()
+    const nextList = [...conversationList.value]
+    const index = nextList.findIndex((item) => item.id === snapshot.id)
+    if (index >= 0) {
+      nextList[index] = {
+        ...nextList[index],
+        ...snapshot,
+        createdAt: nextList[index].createdAt || snapshot.updatedAt,
+      }
+    } else {
+      nextList.unshift({
+        ...snapshot,
+        createdAt: snapshot.updatedAt,
+      })
     }
-  } else {
-    nextList.unshift({
-      ...snapshot,
-      createdAt: snapshot.updatedAt,
-    })
-  }
-  nextList.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-  conversationList.value = nextList
-  const saved = await saveWorkshopConversation(snapshot)
-  const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
-  if (savedIndex >= 0) {
-    const merged = [...conversationList.value]
-    merged[savedIndex] = {
-      ...merged[savedIndex],
-      ...saved,
+    nextList.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    conversationList.value = nextList
+    const saved = await saveWorkshopConversation(snapshot)
+    const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
+    if (savedIndex >= 0) {
+      const merged = [...conversationList.value]
+      merged[savedIndex] = {
+        ...merged[savedIndex],
+        ...saved,
+      }
+      merged.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      conversationList.value = merged
     }
-    merged.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-    conversationList.value = merged
+  })()
+  try {
+    await persistInFlight
+  } finally {
+    persistInFlight = null
   }
 }
 
@@ -1770,7 +1779,16 @@ function schedulePersist() {
   }, 120)
 }
 
+async function flushPendingPersist() {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  await persistConversations()
+}
+
 async function createNewConversation() {
+  await flushPendingPersist()
   const conversation = createEmptyConversation()
   conversationList.value = [conversation, ...conversationList.value]
   applyConversation(conversation)
@@ -1779,14 +1797,17 @@ async function createNewConversation() {
   startRename(conversation.id)
 }
 
-function switchConversation(id) {
+async function switchConversation(id) {
   if (!id || id === currentConversationId.value || busy.value || editingConversationId.value) return
   const conversation = conversationList.value.find((item) => item.id === id)
-  if (conversation) applyConversation(conversation)
+  if (!conversation) return
+  await flushPendingPersist()
+  applyConversation(conversation)
 }
 
 async function deleteConversation(id) {
   if (!id || conversationList.value.length <= 1 || busy.value) return
+  await flushPendingPersist()
   const conversation = conversationList.value.find((item) => item.id === id)
   const targetTitle = conversation?.title || '该对话'
   const confirmed = window.confirm(`确定删除“${targetTitle}”吗？删除后无法恢复。`)
@@ -1824,6 +1845,7 @@ async function loadWorkshopHistory() {
 }
 
 async function logout() {
+  await flushPendingPersist()
   await logoutApi().catch(() => null)
   clearCurrentUser()
   router.push('/login')
@@ -2805,18 +2827,22 @@ onBeforeUnmount(() => {
 <style scoped>
 .workshop {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - 48px);
   overflow: hidden;
   background: var(--bg-base, #0f0f13);
   color: var(--text-primary, #e8e8f0);
   font-family: 'Inter', sans-serif;
+  min-height: 720px;
+  border-radius: 28px;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: var(--shadow-soft);
 }
 
 .history-sidebar {
-  width: 74px;
+  width: 64px;
   flex-shrink: 0;
   height: 100%;
-  background: rgba(31, 31, 34, 0.98);
+  background: rgba(24, 24, 28, 0.98);
   border-right: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
@@ -2826,7 +2852,7 @@ onBeforeUnmount(() => {
 }
 
 .history-sidebar.expanded {
-  width: 320px;
+  width: 280px;
   padding: 16px 18px 18px;
 }
 
@@ -4905,7 +4931,7 @@ onBeforeUnmount(() => {
   }
 
   .history-sidebar.expanded {
-    width: 248px;
+    width: 240px;
     padding: 12px 14px 14px;
   }
 
