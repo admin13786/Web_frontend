@@ -81,7 +81,7 @@
                 type="button"
                 class="sidebar-conversation-delete"
                 title="删除对话"
-                @click="deleteConversation(item.id)"
+                @click="requestDeleteConversation(item.id)"
               >
                 ×
               </button>
@@ -623,6 +623,11 @@
         </div>
       </div>
     </div>
+    <DeleteConversationConfirmModal
+      v-model:open="deleteConversationModalOpen"
+      @confirm="confirmDeleteConversation"
+      @cancel="onDeleteConversationModalCancel"
+    />
     </div>
   </div>
 </template>
@@ -647,6 +652,7 @@ import {
 } from '../api/workshopConversations.js'
 import WorkshopStreamProgress from '../components/WorkshopStreamProgress.vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import DeleteConversationConfirmModal from '../components/DeleteConversationConfirmModal.vue'
 import { useTheme } from '../composables/useTheme'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
 import { createEmptyConversation } from '../utils/workshopHistory.js'
@@ -715,6 +721,8 @@ const currentConversationId = ref('')
 const editingConversationId = ref('')
 const editingTitle = ref('')
 const conversationPage = ref(0)
+const deleteConversationModalOpen = ref(false)
+const pendingDeleteConversationId = ref('')
 let historyHydrating = false
 let persistTimer = null
 const historyReady = ref(false)
@@ -1890,13 +1898,21 @@ async function switchConversation(id) {
   applyConversation(conversation)
 }
 
-async function deleteConversation(id) {
+function onDeleteConversationModalCancel() {
+  pendingDeleteConversationId.value = ''
+}
+
+function requestDeleteConversation(id) {
+  if (!id || conversationList.value.length <= 1 || busy.value) return
+  pendingDeleteConversationId.value = id
+  deleteConversationModalOpen.value = true
+}
+
+async function confirmDeleteConversation() {
+  const id = pendingDeleteConversationId.value
+  pendingDeleteConversationId.value = ''
   if (!id || conversationList.value.length <= 1 || busy.value) return
   await flushPendingPersist()
-  const conversation = conversationList.value.find((item) => item.id === id)
-  const targetTitle = conversation?.title || '该对话'
-  const confirmed = window.confirm(`确定删除“${targetTitle}”吗？删除后无法恢复。`)
-  if (!confirmed) return
   try {
     await deleteWorkshopConversation(id)
   } catch (e) {

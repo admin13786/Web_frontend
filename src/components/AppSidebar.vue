@@ -65,7 +65,7 @@
               class="workshop-history__delete"
               title="删除对话"
               aria-label="删除对话"
-              @click.stop="removeConversation(item.id)"
+              @click.stop="requestRemoveConversation(item.id)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 6h18" />
@@ -111,6 +111,12 @@
       </div>
       <button type="button" class="logout-btn" @click="logout">退出登录</button>
     </div>
+
+    <DeleteConversationConfirmModal
+      v-model:open="deleteConversationModalOpen"
+      @confirm="confirmRemoveConversation"
+      @cancel="clearPendingDelete"
+    />
   </aside>
 </template>
 
@@ -125,6 +131,7 @@ import {
 } from '../api/workshopConversations.js'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
 import { createEmptyConversation } from '../utils/workshopHistory.js'
+import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
 defineProps({
   isMobileOpen: {
@@ -139,6 +146,8 @@ const router = useRouter()
 const route = useRoute()
 const currentUser = getCurrentUser()
 const conversations = ref([])
+const deleteConversationModalOpen = ref(false)
+const pendingDeleteConversationId = ref('')
 const page = ref(0)
 const PER_PAGE = 5
 
@@ -229,8 +238,22 @@ function emitWorkshopHistoryChanged() {
   window.dispatchEvent(new CustomEvent('workshop-history-changed'))
 }
 
-async function removeConversation(id) {
+function clearPendingDelete() {
+  pendingDeleteConversationId.value = ''
+}
+
+function requestRemoveConversation(id) {
   const conversationId = String(id || '').trim()
+  if (!conversationId || conversations.value.length <= 1) return
+  const currentIndex = conversations.value.findIndex((item) => item.id === conversationId)
+  if (currentIndex === -1) return
+  pendingDeleteConversationId.value = conversationId
+  deleteConversationModalOpen.value = true
+}
+
+async function confirmRemoveConversation() {
+  const conversationId = pendingDeleteConversationId.value.trim()
+  clearPendingDelete()
   if (!conversationId || conversations.value.length <= 1) return
 
   const currentIndex = conversations.value.findIndex((item) => item.id === conversationId)
@@ -542,11 +565,22 @@ onBeforeUnmount(() => {
     color var(--transition-fast);
 }
 
+.workshop-history__item--active .workshop-history__delete,
 .workshop-history__item:hover .workshop-history__delete,
 .workshop-history__item:focus-within .workshop-history__delete {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+.workshop-history__item--active .workshop-history__delete {
+  background: rgba(86, 90, 129, 0.55);
+  color: #f4f4f5;
+}
+
+.workshop-history__item--active .workshop-history__delete:hover {
+  background: rgba(99, 103, 150, 0.75);
+  color: #fff;
 }
 
 .workshop-history__delete:hover {
