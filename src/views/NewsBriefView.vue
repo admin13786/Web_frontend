@@ -1,7 +1,7 @@
 <template>
   <div class="brief-page">
     <nav class="brief-nav">
-      <router-link to="/channel" class="back-link">← 返回频道排行榜</router-link>
+      <router-link to="/channel" class="back-link">&larr; 返回频道排行榜</router-link>
       <a v-if="article?.url" class="open-origin" :href="article.url" target="_blank" rel="noreferrer noopener">
         打开原网页 ↗
       </a>
@@ -174,9 +174,9 @@ watch(
 
 <style scoped>
 .brief-page {
-  min-height: 100vh;
-  padding: 20px 16px 60px;
-  background: var(--bg-primary);
+  min-height: 100%;
+  padding: 8px 0 40px;
+  background: transparent;
   overflow: visible;
 }
 

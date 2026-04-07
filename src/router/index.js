@@ -1,41 +1,72 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { login } from '../api/auth.js'
-import { clearCurrentUser, DEFAULT_USER, getCurrentUser, saveCurrentUser } from '../utils/auth.js'
+import { DEFAULT_USER, getCurrentUser, saveCurrentUser } from '../utils/auth.js'
 
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: () => import('../views/HomeView.vue'),
+    component: () => import('../layouts/AppShell.vue'),
     meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        redirect: '/channel',
+      },
+      {
+        path: 'channel',
+        name: 'Channel',
+        component: () => import('../views/ChannelView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '频道排行榜',
+          description: '查看热点排行与讲解入口',
+        },
+      },
+      {
+        path: 'workshop',
+        name: 'Workshop',
+        component: () => import('../views/WorkshopView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '创意工坊',
+          description: '对话生成与结果预览',
+        },
+      },
+      {
+        path: 'openmaic',
+        name: 'OpenMAIC',
+        component: () => import('../views/OpenMAICView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: 'OpenMAIC',
+          description: '内嵌应用入口',
+        },
+      },
+      {
+        path: 'news/:newsId',
+        name: 'NewsDetail',
+        component: () => import('../views/NewsDetailView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '资讯详情',
+          description: '查看原文与资讯详情',
+        },
+      },
+      {
+        path: 'brief/:newsId',
+        name: 'NewsBrief',
+        component: () => import('../views/NewsBriefView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '简报详情',
+          description: '从频道排行榜跳转查看摘要',
+        },
+      },
+    ],
   },
   {
     path: '/home',
-    redirect: '/',
-  },
-  {
-    path: '/channel',
-    name: 'Channel',
-    component: () => import('../views/ChannelView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/workshop',
-    name: 'Workshop',
-    component: () => import('../views/WorkshopView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/news/:newsId',
-    name: 'NewsDetail',
-    component: () => import('../views/NewsDetailView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/brief/:newsId',
-    name: 'NewsBrief',
-    component: () => import('../views/NewsBriefView.vue'),
-    meta: { requiresAuth: true },
+    redirect: '/channel',
   },
   {
     path: '/login',
@@ -54,7 +85,6 @@ let defaultLoginPromise = null
 
 async function ensureDefaultUser() {
   if (!defaultLoginPromise) {
-    // 先写入一个本地默认会话，避免后端暂时不可用时整站被强制踢到登录页
     const existing = getCurrentUser()
     if (!existing) {
       saveCurrentUser({
@@ -79,13 +109,12 @@ async function ensureDefaultUser() {
         }
         return !!getCurrentUser()
       })
-      .catch(() => {
-        return !!getCurrentUser()
-      })
+      .catch(() => !!getCurrentUser())
       .finally(() => {
         defaultLoginPromise = null
       })
   }
+
   return defaultLoginPromise
 }
 
