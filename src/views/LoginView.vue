@@ -193,7 +193,7 @@ async function handleSubmit() {
   margin-bottom: 24px;
   padding: 4px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-muted);
 }
 
 .mode-btn {
@@ -208,11 +208,11 @@ async function handleSubmit() {
 
 .mode-btn.active {
   background: rgba(99, 102, 241, 0.18);
-  color: #fff;
+  color: var(--text-contrast);
 }
 
 .login-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-size: 1.75rem;
   font-weight: 600;
   margin-bottom: 8px;
@@ -245,7 +245,7 @@ async function handleSubmit() {
 
 .form-group input {
   padding: 14px 16px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--bg-input);
   border: 1px solid var(--bg-glass-border);
   border-radius: var(--radius-lg);
   color: var(--text-primary);

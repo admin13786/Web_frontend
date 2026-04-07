@@ -18,7 +18,7 @@ const routes = [
         component: () => import('../views/ChannelView.vue'),
         meta: {
           requiresAuth: true,
-          title: '频道排行榜',
+          title: 'AI新闻早咖啡',
           description: '查看热点排行与讲解入口',
         },
       },
@@ -59,7 +59,7 @@ const routes = [
         meta: {
           requiresAuth: true,
           title: '简报详情',
-          description: '从频道排行榜跳转查看摘要',
+          description: '从AI新闻早咖啡跳转查看摘要',
         },
       },
     ],

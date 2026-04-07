@@ -1,7 +1,7 @@
 <template>
   <div class="brief-page">
     <nav class="brief-nav">
-      <router-link to="/channel" class="back-link">&larr; 返回频道排行榜</router-link>
+      <router-link to="/channel" class="back-link">&larr; 返回AI新闻早咖啡</router-link>
       <a v-if="article?.url" class="open-origin" :href="article.url" target="_blank" rel="noreferrer noopener">
         打开原网页 ↗
       </a>
@@ -313,7 +313,7 @@ watch(
 
 .card-index {
   flex-shrink: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-weight: 300;
   font-size: 1.5rem;
   color: var(--text-muted);

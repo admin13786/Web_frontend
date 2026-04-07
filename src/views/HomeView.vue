@@ -154,8 +154,8 @@ async function logout() {
 .account-chip {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-glass);
+  border: 1px solid var(--bg-glass-border);
   backdrop-filter: blur(12px);
   color: var(--text-primary);
   display: flex;
@@ -169,8 +169,8 @@ async function logout() {
 }
 
 .account-logout {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-elevated);
   color: var(--text-primary);
   border-radius: 999px;
   padding: 10px 14px;
@@ -179,7 +179,7 @@ async function logout() {
 }
 
 .account-logout:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--bg-card-hover);
   transform: translateY(-1px);
 }
 
@@ -276,7 +276,7 @@ async function logout() {
 }
 
 .card-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 8px;

@@ -1,9 +1,11 @@
 <template>
   <aside class="app-sidebar" :class="{ 'app-sidebar--mobile-open': isMobileOpen }">
     <div class="app-sidebar__brand">
-      <div class="brand-mark">LW</div>
+      <div class="brand-mark">
+        <img :src="brandLogoSrc" alt="CogniMatrix" class="brand-mark__image" />
+      </div>
       <div>
-        <div class="brand-title">教育</div>
+      <div class="brand-title">Education</div>
         <div class="brand-subtitle">内容工作台</div>
       </div>
       <button type="button" class="mobile-close-btn" @click="$emit('close-mobile')">
@@ -24,12 +26,83 @@
         @click="$emit('close-mobile')"
       >
         <span class="nav-item__icon" v-html="item.icon" />
-        <span class="nav-item__copy">
-          <span class="nav-item__label">{{ item.label }}</span>
-          <span class="nav-item__desc">{{ item.description }}</span>
-        </span>
+        <span class="nav-item__label">{{ item.label }}</span>
       </RouterLink>
     </nav>
+
+    <section class="app-sidebar__panel">
+      <button type="button" class="workshop-history-create" @click="createConversation">
+        <span class="workshop-history-create__icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </span>
+        <span>新对话</span>
+      </button>
+
+      <div class="workshop-history">
+        <div class="workshop-history__title">近期对话</div>
+
+        <div class="workshop-history__list">
+          <div
+            v-for="item in pagedConversations"
+            :key="item.id"
+            class="workshop-history__item"
+            :class="{ 'workshop-history__item--active': item.id === activeConversationId }"
+          >
+            <button
+              type="button"
+              class="workshop-history__item-main"
+              @click="openConversation(item.id)"
+            >
+              <span class="workshop-history__item-title">{{ item.title || '新对话' }}</span>
+              <span class="workshop-history__item-time">{{ formatConversationTime(item.updatedAt) }}</span>
+            </button>
+
+            <button
+              v-if="conversations.length > 1"
+              type="button"
+              class="workshop-history__delete"
+              title="删除对话"
+              aria-label="删除对话"
+              @click.stop="removeConversation(item.id)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="!pagedConversations.length" class="workshop-history__empty">
+            暂无近期对话
+          </div>
+        </div>
+
+        <div v-if="totalPages > 1" class="workshop-history__pagination">
+          <button
+            type="button"
+            class="workshop-history__page-btn"
+            :disabled="page === 0"
+            @click="page -= 1"
+          >
+            上一页
+          </button>
+          <span class="workshop-history__page-indicator">{{ page + 1 }} / {{ totalPages }}</span>
+          <button
+            type="button"
+            class="workshop-history__page-btn"
+            :disabled="page >= totalPages - 1"
+            @click="page += 1"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
+    </section>
 
     <div class="app-sidebar__user">
       <div class="user-meta">
@@ -42,10 +115,16 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
+import {
+  deleteWorkshopConversation,
+  fetchWorkshopConversations,
+  saveWorkshopConversation,
+} from '../api/workshopConversations.js'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
+import { createEmptyConversation } from '../utils/workshopHistory.js'
 
 defineProps({
   isMobileOpen: {
@@ -59,12 +138,22 @@ defineEmits(['close-mobile'])
 const router = useRouter()
 const route = useRoute()
 const currentUser = getCurrentUser()
+const conversations = ref([])
+const page = ref(0)
+const PER_PAGE = 5
 
 const userName = computed(() => getUserDisplayName(currentUser) || '未登录')
+const brandLogoSrc = computed(() => '/branding/cognimatrix-logo-cutout.png')
+const activeConversationId = computed(() => String(route.query.cid || conversations.value[0]?.id || ''))
+const totalPages = computed(() => Math.max(1, Math.ceil(conversations.value.length / PER_PAGE)))
+const pagedConversations = computed(() => {
+  const start = page.value * PER_PAGE
+  return conversations.value.slice(start, start + PER_PAGE)
+})
 
 const navItems = [
   {
-    label: '频道排行榜',
+    label: 'AI新闻早咖啡',
     description: '热点排行与讲解入口',
     to: '/channel',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="4" height="10" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="3" width="4" height="17" rx="1"/></svg>',
@@ -87,11 +176,141 @@ function isActive(item) {
   return route.path === item.to || route.path.startsWith(`${item.to}/`)
 }
 
+function clampPage(nextPage = page.value) {
+  const maxPage = Math.max(0, totalPages.value - 1)
+  page.value = Math.min(Math.max(nextPage, 0), maxPage)
+}
+
+function syncPageByConversationId(id) {
+  const index = conversations.value.findIndex((item) => item.id === id)
+  if (index === -1) {
+    clampPage()
+    return
+  }
+  clampPage(Math.floor(index / PER_PAGE))
+}
+
+async function loadWorkshopHistory() {
+  try {
+    conversations.value = await fetchWorkshopConversations()
+    syncPageByConversationId(activeConversationId.value)
+  } catch (error) {
+    console.error('load workshop sidebar conversations failed:', error)
+    conversations.value = []
+    clampPage(0)
+  }
+}
+
+function openConversation(id) {
+  if (!id) return
+  syncPageByConversationId(id)
+  router.push({
+    path: '/workshop',
+    query: {
+      ...route.query,
+      cid: id,
+    },
+  })
+}
+
+async function createConversation() {
+  const conversation = createEmptyConversation()
+  try {
+    await saveWorkshopConversation(conversation)
+  } catch (error) {
+    console.error('create workshop conversation failed:', error)
+  }
+  await loadWorkshopHistory()
+  openConversation(conversation.id)
+}
+
+function emitWorkshopHistoryChanged() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('workshop-history-changed'))
+}
+
+async function removeConversation(id) {
+  const conversationId = String(id || '').trim()
+  if (!conversationId || conversations.value.length <= 1) return
+
+  const currentIndex = conversations.value.findIndex((item) => item.id === conversationId)
+  if (currentIndex === -1) return
+
+  const nextConversations = conversations.value.filter((item) => item.id !== conversationId)
+  const nextActiveId =
+    nextConversations[currentIndex]?.id ||
+    nextConversations[currentIndex - 1]?.id ||
+    nextConversations[0]?.id ||
+    ''
+
+  try {
+    await deleteWorkshopConversation(conversationId)
+    conversations.value = nextConversations
+    clampPage()
+    emitWorkshopHistoryChanged()
+
+    if (activeConversationId.value === conversationId && nextActiveId) {
+      openConversation(nextActiveId)
+      return
+    }
+
+    syncPageByConversationId(activeConversationId.value)
+  } catch (error) {
+    console.error('delete workshop conversation failed:', error)
+  }
+}
+
+function formatConversationTime(raw) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function handleWorkshopHistoryChanged() {
+  loadWorkshopHistory()
+}
+
 async function logout() {
   await logoutApi().catch(() => null)
   clearCurrentUser()
   router.push('/login')
 }
+
+watch(
+  () => route.fullPath,
+  () => {
+    loadWorkshopHistory()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => activeConversationId.value,
+  (id) => {
+    syncPageByConversationId(id)
+  },
+)
+
+watch(
+  () => conversations.value.length,
+  () => {
+    clampPage()
+  },
+)
+
+onMounted(() => {
+  window.addEventListener('workshop-history-changed', handleWorkshopHistoryChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('workshop-history-changed', handleWorkshopHistoryChanged)
+})
 </script>
 
 <style scoped>
@@ -103,10 +322,8 @@ async function logout() {
   flex-direction: column;
   gap: 14px;
   padding: 18px 16px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(24, 26, 34, 0.98), rgba(20, 21, 28, 0.94)),
-    rgba(255, 255, 255, 0.02);
+  border-right: 1px solid var(--topbar-border);
+  background: var(--sidebar-bg);
   backdrop-filter: blur(18px);
   position: sticky;
   top: 0;
@@ -120,17 +337,24 @@ async function logout() {
 }
 
 .brand-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: #eef2ff;
-  background: linear-gradient(135deg, #4f46e5, #0ea5e9);
-  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.28);
+  overflow: hidden;
+  padding: 5px;
+  background: var(--brand-mark-bg);
+  border: 1px solid var(--brand-mark-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.brand-mark__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-title {
@@ -150,8 +374,8 @@ async function logout() {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-elevated);
   color: var(--text-primary);
   align-items: center;
   justify-content: center;
@@ -163,22 +387,30 @@ async function logout() {
   gap: 8px;
 }
 
+.app-sidebar__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+}
+
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 14px 12px;
   border-radius: 18px;
   text-decoration: none;
   color: var(--text-primary);
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-muted);
   transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .nav-item:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-elevated);
 }
 
 .nav-item--active {
@@ -194,27 +426,190 @@ async function logout() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #c7d2fe;
-  background: rgba(99, 102, 241, 0.14);
+  color: var(--sidebar-icon-color);
+  background: var(--sidebar-icon-bg);
   flex-shrink: 0;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
-.nav-item__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.nav-item--active .nav-item__icon {
+  color: var(--sidebar-icon-active-color);
+  background: var(--sidebar-icon-active-bg);
 }
 
 .nav-item__label {
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workshop-history-create {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
   font-size: 0.88rem;
   font-weight: 700;
 }
 
-.nav-item__desc {
+.workshop-history-create__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sidebar-create-icon-color);
+  background: var(--sidebar-create-icon-bg);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.workshop-history {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.workshop-history__title {
+  margin: 0 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.workshop-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workshop-history__item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.workshop-history__item--active {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(129, 140, 248, 0.2);
+}
+
+.workshop-history__item-main {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.workshop-history__delete {
+  width: 34px;
+  flex-shrink: 0;
+  margin: 6px 6px 6px 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    visibility var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.workshop-history__item:hover .workshop-history__delete,
+.workshop-history__item:focus-within .workshop-history__delete {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.workshop-history__delete:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.workshop-history__item-title,
+.workshop-history__item-time {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshop-history__item-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.workshop-history__item-time {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.workshop-history__empty {
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.workshop-history__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.workshop-history__page-btn {
+  min-width: 64px;
+  border: 1px solid var(--bg-glass-border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 6px 12px;
   font-size: 0.74rem;
-  color: var(--text-secondary);
-  line-height: 1.45;
+  cursor: pointer;
+}
+
+.workshop-history__page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.workshop-history__page-indicator {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .app-sidebar__user {
@@ -225,8 +620,8 @@ async function logout() {
   margin-top: auto;
   padding: 12px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-elevated);
+  border: 1px solid var(--bg-glass-border);
 }
 
 .user-label {
@@ -241,8 +636,8 @@ async function logout() {
 }
 
 .logout-btn {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-muted);
   color: var(--text-primary);
   border-radius: 12px;
   padding: 9px 12px;

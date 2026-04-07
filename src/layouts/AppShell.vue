@@ -22,6 +22,7 @@
             <line x1="4" y1="17" x2="20" y2="17" />
           </svg>
         </button>
+        <img :src="brandLogoSrc" alt="CogniMatrix" class="topbar-logo" />
         <div class="topbar-copy">
           <div class="topbar-title">{{ currentMeta.title || '内容工作台' }}</div>
           <div class="topbar-subtitle">{{ currentMeta.description || '统一侧边栏工作区' }}</div>
@@ -44,6 +45,7 @@ const route = useRoute()
 const mobileSidebarOpen = ref(false)
 
 const currentMeta = computed(() => route.meta || {})
+const brandLogoSrc = computed(() => '/branding/cognimatrix-logo-cutout.png')
 
 watch(
   () => route.fullPath,
@@ -55,19 +57,19 @@ watch(
 
 <style scoped>
 .app-shell {
+  height: 100vh;
   min-height: 100vh;
   display: flex;
   position: relative;
-  background:
-    radial-gradient(circle at top, rgba(99, 102, 241, 0.12), transparent 30%),
-    linear-gradient(180deg, #1b1c23 0%, #15161c 100%);
+  background: var(--shell-bg);
+  overflow: hidden;
 }
 
 .app-shell__overlay {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(6, 8, 14, 0.6);
+  background: var(--bg-overlay);
   backdrop-filter: blur(4px);
 }
 
@@ -77,6 +79,7 @@ watch(
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-shell__topbar {
@@ -84,8 +87,8 @@ watch(
   align-items: center;
   gap: 14px;
   padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(17, 18, 24, 0.9);
+  border-bottom: 1px solid var(--topbar-border);
+  background: var(--topbar-bg);
   backdrop-filter: blur(18px);
 }
 
@@ -93,13 +96,25 @@ watch(
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-elevated);
   color: var(--text-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.topbar-logo {
+  width: 40px;
+  height: 40px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--brand-mark-bg);
+  border: 1px solid var(--brand-mark-border);
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
 }
 
 .topbar-title {
@@ -118,6 +133,8 @@ watch(
   min-width: 0;
   min-height: 0;
   padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 960px) {

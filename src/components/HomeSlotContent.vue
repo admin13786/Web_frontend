@@ -25,7 +25,7 @@ const props = defineProps({
 defineEmits(['navigate'])
 
 const content = {
-  channel: { title: 'Channel', desc: '频道排行榜' },
+  channel: { title: 'Channel', desc: 'AI新闻早咖啡' },
   workshop: { title: 'Workshop', desc: '创意工作坊 · 探索与协作空间' },
   remain: { title: 'OpenMAIC', desc: '教育龙虾' }
 }
@@ -52,7 +52,7 @@ const arrowAriaLabel = computed(() => {
 }
 
 .card-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family-display);
   font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 8px;
