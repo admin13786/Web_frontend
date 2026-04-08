@@ -1,5 +1,5 @@
 import { request } from './client.js'
-import { USE_MOCK } from '../config.js'
+import { USE_AUTH_MOCK } from '../config.js'
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 const MOCK_USER_STORE_KEY = 'mock_auth_users_v1'
@@ -82,7 +82,7 @@ async function mockRegister(username, password, displayName) {
  * @returns {Promise<{ success: boolean, token?: string, message?: string }>}
  */
 export async function login(payload) {
-  if (USE_MOCK) {
+  if (USE_AUTH_MOCK) {
     const res = await mockLogin(payload.username, payload.password)
     if (!res.ok) return res.data
     return res.data
@@ -101,7 +101,7 @@ export async function login(payload) {
 }
 
 export async function register(payload) {
-  if (USE_MOCK) {
+  if (USE_AUTH_MOCK) {
     const res = await mockRegister(payload.username, payload.password, payload.displayName)
     return res.data
   }
@@ -126,7 +126,7 @@ export async function register(payload) {
 }
 
 export async function logout() {
-  if (USE_MOCK) return { success: true }
+  if (USE_AUTH_MOCK) return { success: true }
   const { data } = await request('/api/auth/sessions/current', {
     method: 'DELETE',
   })

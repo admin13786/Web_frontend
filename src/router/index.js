@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { login } from '../api/auth.js'
-import { DEFAULT_USER, getCurrentUser, saveCurrentUser } from '../utils/auth.js'
+import { DEFAULT_USER, clearCurrentUser, getCurrentUser, saveCurrentUser } from '../utils/auth.js'
 
 const routes = [
   {
@@ -10,7 +10,7 @@ const routes = [
     children: [
       {
         path: '',
-        redirect: '/home',
+        redirect: '/workshop',
       },
       {
         path: 'home',
@@ -91,15 +91,6 @@ let defaultLoginPromise = null
 
 async function ensureDefaultUser() {
   if (!defaultLoginPromise) {
-    const existing = getCurrentUser()
-    if (!existing) {
-      saveCurrentUser({
-        username: DEFAULT_USER.username,
-        displayName: DEFAULT_USER.displayName,
-        token: `default_local_${Date.now()}`,
-      })
-    }
-
     defaultLoginPromise = login({
       username: DEFAULT_USER.username,
       password: DEFAULT_USER.password,
@@ -113,9 +104,13 @@ async function ensureDefaultUser() {
           })
           return true
         }
-        return !!getCurrentUser()
+        clearCurrentUser()
+        return false
       })
-      .catch(() => !!getCurrentUser())
+      .catch(() => {
+        clearCurrentUser()
+        return false
+      })
       .finally(() => {
         defaultLoginPromise = null
       })

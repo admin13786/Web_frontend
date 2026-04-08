@@ -131,6 +131,8 @@ import {
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
 import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
+const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
+
 defineProps({
   isMobileOpen: {
     type: Boolean,
@@ -220,8 +222,18 @@ function openConversation(id) {
   })
 }
 
-function goToWelcomePage() {
-  router.push('/home')
+async function goToWelcomePage() {
+  if (route.path === '/workshop') {
+    window.dispatchEvent(new CustomEvent(WORKSHOP_CREATE_CONVERSATION_EVENT))
+    return
+  }
+
+  await router.push({
+    path: '/workshop',
+    query: {
+      new: '1',
+    },
+  })
 }
 
 function emitWorkshopHistoryChanged() {

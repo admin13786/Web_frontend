@@ -1,5 +1,9 @@
-<template>
-  <div class="workshop" ref="workshopEl">
+﻿<template>
+  <div
+    class="workshop"
+    :class="theme === 'dark' ? 'workshop--dark' : 'workshop--light'"
+    ref="workshopEl"
+  >
     <aside v-if="false" class="history-sidebar" :class="{ expanded: sidebarExpanded }">
       <div class="sidebar-top">
         <button type="button" class="sidebar-icon-btn" :title="sidebarExpanded ? '收起侧栏' : '展开侧栏'" @click="toggleSidebar">
@@ -120,15 +124,99 @@
       </template>
     </aside>
 
-    <div class="workspace-main">
+    <div v-if="isWelcomeScreen" class="workspace-main">
+      <div class="chat-panel chat-panel--welcome">
+        <div class="welcome-screen">
+          <div class="welcome-screen__panel">
+            <div class="welcome-screen__meta">
+              <div class="welcome-screen__title-row">
+                <div class="welcome-screen__title">{{ chatTitle }}</div>
+              </div>
+              <div class="welcome-screen__subtitle">当前用户 · {{ userDisplayName }}</div>
+            </div>
+
+            <div class="welcome-screen__hero">
+              <div class="welcome-screen__art"></div>
+              <div class="welcome-screen__copy">
+                <span class="welcome-screen__eyebrow">Agent Workspace</span>
+                <h1 class="welcome-screen__headline">Hi, 朋友</h1>
+                <p class="welcome-screen__desc">今天想一起完成什么？可以直接输入需求，我们马上开始。</p>
+              </div>
+            </div>
+
+            <div class="welcome-screen__composer">
+              <textarea
+                v-model="inputText"
+                class="welcome-screen__textarea"
+                placeholder="给我一个任务，或者直接描述你想要的页面"
+                rows="1"
+                @keydown.enter.exact.prevent="sendMessage"
+                @input="autoResize"
+                ref="textareaEl"
+              ></textarea>
+              <div class="welcome-screen__actions">
+                <div class="mode-switch mode-switch--welcome" role="tablist" aria-label="生成模式">
+                  <button
+                    type="button"
+                    class="mode-switch__option"
+                    :class="{ 'mode-switch__option--active': generationMode === 'single_html' }"
+                    title="使用单个 HTML 文件生成"
+                    @click="setGenerationMode('single_html')"
+                  >
+                    <span class="mode-switch__label">HTML</span>
+                    <span class="mode-switch__hint">单文件</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mode-switch__option"
+                    :class="{ 'mode-switch__option--active': generationMode === 'vite' }"
+                    title="使用 Vite 多文件工程生成"
+                    @click="setGenerationMode('vite')"
+                  >
+                    <span class="mode-switch__label">Vite</span>
+                    <span class="mode-switch__hint">多文件</span>
+                  </button>
+                </div>
+                <button class="welcome-screen__send" :disabled="!inputText.trim() || busy" @click="sendMessage">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="workspace-main">
     <!-- Left: Chat Panel -->
     <div class="chat-panel" :style="{ width: leftWidth + '%' }">
       <div class="chat-header">
         <div class="chat-header-main">
           <div>
             <div class="chat-title-row">
-              <div class="chat-title">{{ chatTitle }}</div>
-              <button type="button" class="title-edit-btn" title="修改对话名" @click="startRename(currentConversationId)">
+              <template v-if="editingConversationId === currentConversationId">
+                <input
+                  :id="conversationInputId(currentConversationId)"
+                  v-model="editingTitle"
+                  type="text"
+                  class="chat-title-input"
+                  maxlength="40"
+                  @keydown.enter.prevent="commitRename(currentConversationId)"
+                  @keydown.esc.prevent="cancelRename"
+                  @blur="commitRename(currentConversationId)"
+                />
+              </template>
+              <div v-else class="chat-title">{{ chatTitle }}</div>
+              <button
+                v-if="editingConversationId !== currentConversationId"
+                type="button"
+                class="title-edit-btn"
+                title="修改对话名"
+                @click="startRename(currentConversationId)"
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
@@ -173,7 +261,7 @@
           </div>
         </div>
         <div v-if="messages.length === 0 && !busy" class="empty-hint">
-          <p>发送消息开始与 Agent 对话</p>
+          <p>鍙戦€佹秷鎭紑濮嬩笌 Agent 对话</p>
         </div>
         <div v-for="(msg, i) in messages" :key="msg.key" class="message" :class="msg.role">
           <div class="msg-avatar">
@@ -333,8 +421,8 @@
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             </svg>
           </button>
-          <!-- [容器池功能暂时禁用]
-          <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="查看沙箱池状态" @click="toggleSandboxPool">
+          <!-- [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+          <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="鏌ョ湅娌欑姹犵姸鎬? @click="toggleSandboxPool">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="7" height="7" rx="1.5"/>
               <rect x="14" y="4" width="7" height="7" rx="1.5"/>
@@ -400,7 +488,7 @@
                   <polyline points="8 4 16 12 8 20"/>
                 </svg>
               </span>
-              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '📁' : fileIcon(node.path) }}</span>
+              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '馃搧' : fileIcon(node.path) }}</span>
               <span class="workspace-tree-label">{{ node.name }}</span>
             </button>
           </div>
@@ -431,7 +519,7 @@
             <div class="file-viewer-header">
               <div>
                 <div class="file-viewer-title">{{ workspaceSelectedFile.name || '选择文件' }}</div>
-                <div class="file-viewer-subtitle">{{ workspaceSelectedFile.path || '从左侧文件目录中选择一个文件以查看内容。' }}</div>
+                <div class="file-viewer-subtitle">{{ workspaceSelectedFile.path || '从左侧目录中选择一个文件查看内容。' }}</div>
               </div>
               <button
                 v-if="workspaceSelectedFile.path"
@@ -450,11 +538,11 @@
               <div v-if="workspaceSelectedFile.truncated" class="file-viewer-notice">文件较大，当前仅展示前 256 KB 内容。</div>
               <pre class="file-viewer-code"><code>{{ workspaceSelectedFile.content }}</code></pre>
             </div>
-            <div v-else class="file-viewer-empty">从左侧文件目录中选择一个文件以查看内容。</div>
+            <div v-else class="file-viewer-empty">从左侧目录中选择一个文件查看内容。</div>
           </div>
 
           <template v-else>
-        <!-- [容器池功能暂时禁用]
+        <!-- [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
         <div v-if="showSandboxPool" class="sandbox-pool-panel">
           <div class="sandbox-pool-header">
             <div>
@@ -472,8 +560,8 @@
               <div v-if="sandboxPool.activeSandboxes.length" class="sandbox-pool-list">
                 <div v-for="item in sandboxPool.activeSandboxes" :key="`${item.username}-${item.conversationId}`" class="sandbox-pool-item">
                   <div class="sandbox-pool-item-title">{{ item.username }} / {{ item.conversationId }}</div>
-                  <div class="sandbox-pool-item-meta">{{ item.containerName }} · {{ item.kind }} · 端口 {{ item.port }}</div>
-                  <div class="sandbox-pool-item-meta">最近访问 {{ formatPoolTime(item.lastAccessedAt) }}</div>
+                  <div class="sandbox-pool-item-meta">{{ item.containerName }} / {{ item.kind }} / 端口 {{ item.port }}</div>
+                  <div class="sandbox-pool-item-meta">最近访问：{{ formatPoolTime(item.lastAccessedAt) }}</div>
                 </div>
               </div>
               <div v-else class="sandbox-pool-empty">当前没有活跃沙箱</div>
@@ -484,7 +572,7 @@
                 <div v-for="item in sandboxPool.reclaimedSandboxes" :key="`${item.workspacePath}-${item.reclaimedAt}`" class="sandbox-pool-item">
                   <div class="sandbox-pool-item-title">{{ item.username }} / {{ item.conversationId }}</div>
                   <div class="sandbox-pool-item-meta">{{ formatReclaimReason(item.reclaimReason) }}</div>
-                  <div class="sandbox-pool-item-meta">回收于 {{ formatPoolTime(item.reclaimedAt) }}</div>
+                  <div class="sandbox-pool-item-meta">回收于：{{ formatPoolTime(item.reclaimedAt) }}</div>
                 </div>
               </div>
               <div v-else class="sandbox-pool-empty">暂时没有回收记录</div>
@@ -522,7 +610,7 @@
               <pre class="debug-value"><code>{{ activeToolsText }}</code></pre>
             </div>
             <div class="debug-item">
-              <div class="debug-label">工具输入/输出</div>
+              <div class="debug-label">工具输入 / 输出</div>
               <pre class="debug-value"><code>{{ toolLogsText }}</code></pre>
             </div>
             <div class="debug-item">
@@ -530,7 +618,7 @@
               <pre class="debug-value"><code>{{ agentDoDebug.textDelta || '-' }}</code></pre>
             </div>
             <div class="debug-item">
-              <div class="debug-label">todo 列表</div>
+              <div class="debug-label">Todo 列表</div>
               <pre class="debug-value"><code>{{ todoText }}</code></pre>
             </div>
             <div class="debug-item">
@@ -592,7 +680,7 @@
             <span class="url-text">{{ previewUrl }}</span>
             <a :href="previewUrl" target="_blank" class="url-open-btn" title="在新标签页打开">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              新标签打开
+              新标签页打开
             </a>
           </div>
           <iframe
@@ -637,7 +725,7 @@ import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
-  // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
+  // fetchAgentDoSandboxPool, // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
   fetchAgentDoWorkspaceFile,
   fetchAgentDoWorkspaceTree,
   normalizeWorkshopPreviewUrl,
@@ -665,7 +753,7 @@ const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark')
 const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '未登录')
 const sidebarExpanded = ref(false)
 
-// ── Layout / drag ──────────────────────────────────────────────
+// 鈹€鈹€ Layout / drag 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const workshopEl = ref(null)
 const leftWidth = ref(40)
 let dragging = false
@@ -693,7 +781,7 @@ function stopDrag() {
   document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '')
 }
 
-// ── Chat state ─────────────────────────────────────────────────
+// 鈹€鈹€ Chat state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 let messageKeySeq = 0
 function allocMessageKey() {
   messageKeySeq += 1
@@ -702,7 +790,9 @@ function allocMessageKey() {
 
 const messages = ref([])
 const inputText = ref('')
+const isWelcomeScreen = computed(() => messages.value.length === 0 && !busy.value && !loading.value)
 const WORKSHOP_MODE_STORAGE_KEY = 'workshop:generation-mode'
+const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const generationMode = ref(loadGenerationMode())
 /** SSE：给用户看的说明（Markdown） */
 const streamingFriendly = ref('')
@@ -711,7 +801,7 @@ const streamingHtml = ref('')
 const streamingSegments = ref([])
 /** 整段请求进行中（含 SSE 与上传），用于禁用发送避免重复提交 */
 const busy = ref(false)
-/** 仅用于底部「打字点」：首包前的等待、上传阶段 */
+/** 仅用于底部“打字点”：首包前的等待、上传阶段 */
 const loading = ref(false)
 const chatTitle = ref('Agent 对话')
 const messagesEl = ref(null)
@@ -746,9 +836,9 @@ function loadGenerationMode() {
 
 function buildModeSystemPrompt(mode) {
   if (mode === 'vite') {
-    return '你是资深前端开发者。请使用 Vite 多文件工程实现需求，但默认优先选择 vanilla Vite，小而稳地组织文件。除非用户明确要求，否则不要擅自切到 React、Vue 或 TypeScript 重工程方案。请合理拆分 index.html、src/main.js、游戏核心模块和样式文件，保证生成结果可以直接运行，并在结束前自行检查关键文件是否补齐。'
+    return '你是资深前端开发者。请使用 Vite 多文件工程实现需求，但默认优先选择 vanilla Vite，小而稳地组织文件。除非用户明确要求，否则不要擅自切换到 React、Vue 或 TypeScript 重工程方案。请合理拆分 index.html、src/main.js、核心模块和样式文件，保证生成结果可以直接运行，并在结束前自行检查关键文件是否齐全。'
   }
-  return '你是资深前端开发者。对于游戏、动画、工具页面等纯前端需求，直接生成单个 index.html（内联所有 JS/CSS），不要创建 npm 项目。只有用户明确要求框架时才用 Vite。追求一步到位，减少文件操作次数。'
+  return '你是资深前端开发者。对于游戏、动画、工具页等纯前端需求，直接生成单个 index.html，并内联所需 JS/CSS，不要创建 npm 项目。只有用户明确要求工程化方案时才使用 Vite。请尽量一步到位，减少不必要的文件操作。'
 }
 
 function setGenerationMode(mode) {
@@ -758,11 +848,20 @@ function setGenerationMode(mode) {
 function buildRecoveryContext(originalText) {
   return [
     '上一轮生成在同一个 workspace 中途被打断了。',
-    '不要重新初始化项目，不要重建脚手架。',
-    '请直接基于当前已有文件继续完善，补齐缺失的入口、核心逻辑、样式和资源引用，直到项目能正确运行并符合原始需求。',
-    '如果发现选错了技术栈，请在保留当前 workspace 的前提下做最小必要调整。',
+    '不要重新初始化项目，也不要重建脚手架。',
+    '请直接基于当前已有文件继续完善，补齐缺失的入口、核心逻辑、样式和资源引用，直到项目可以正常运行并符合原始需求。',
+    '如果发现技术栈选错了，请在保留当前 workspace 的前提下做最小必要调整。',
     `原始需求：${originalText}`,
   ].join('\n')
+}
+
+function shouldRetrySingleHtmlStreamError(message) {
+  if (generationMode.value !== 'single_html') return false
+  const text = String(message || '')
+  return (
+    text.includes('当前 session 没有可在线运行的项目')
+    || text.includes('当前 session 没有可预览内容')
+  )
 }
 
 function createEmptyPreviewState() {
@@ -776,7 +875,7 @@ function createEmptyPreviewState() {
   }
 }
 
-// ── Right panel state ──────────────────────────────────────────
+// 鈹€鈹€ Right panel state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const previewMode = ref('empty')
 const previewHtml = ref('')
 const previewUrl = ref('')
@@ -786,7 +885,7 @@ const codeCopied = ref(false)
 const urlLoadError = ref(false)
 const previewFrameState = ref('idle')
 const showAgentDoDebug = ref(false)
-// const showSandboxPool = ref(false) // [容器池功能暂时禁用]
+// const showSandboxPool = ref(false) // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
 const showWorkspaceFiles = ref(false)
 const agentDoDebug = ref({
   requestPayload: null,
@@ -810,7 +909,7 @@ const agentDoLive = ref({
   reasoning: '',
   answer: '',
 })
-/* [容器池功能暂时禁用]
+/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
 const sandboxPoolLoading = ref(false)
 const sandboxPoolError = ref('')
 const sandboxPool = ref({
@@ -968,14 +1067,14 @@ function toggleDirectoryExpanded(path) {
 
 function fileIcon(path) {
   const lower = String(path || '').toLowerCase()
-  if (lower.endsWith('.html')) return '🌐'
-  if (lower.endsWith('.css')) return '🎨'
-  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return '🟨'
-  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return '🟦'
-  if (lower.endsWith('.json')) return '🧩'
-  if (lower.endsWith('.md')) return '📝'
-  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg')) return '🖼️'
-  return '📄'
+  if (lower.endsWith('.html')) return 'HTML'
+  if (lower.endsWith('.css')) return 'CSS'
+  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return 'JS'
+  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'TS'
+  if (lower.endsWith('.json')) return 'JSON'
+  if (lower.endsWith('.md')) return 'MD'
+  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg')) return 'IMG'
+  return 'FILE'
 }
 
 function findFirstFileNode(node) {
@@ -1068,12 +1167,12 @@ function handleWorkspaceNodeClick(node) {
 async function toggleWorkspaceFiles() {
   showWorkspaceFiles.value = !showWorkspaceFiles.value
   if (!showWorkspaceFiles.value) return
-  // showSandboxPool.value = false // [容器池功能暂时禁用]
+  // showSandboxPool.value = false // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
   showAgentDoDebug.value = false
   await loadWorkspaceTree()
 }
 
-// ── Smart auto-scroll ──────────────────────────────────────────
+// 鈹€鈹€ Smart auto-scroll 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const userScrolledUp = ref(false)
 const newChunksWhileScrolledUp = ref(false)
 const SCROLL_THRESHOLD = 80
@@ -1104,7 +1203,7 @@ function forceScrollBottom() {
   })
 }
 
-// ── Elapsed timer ──────────────────────────────────────────────
+// 鈹€鈹€ Elapsed timer 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const streamStartTime = ref(0)
 const elapsedSeconds = ref(0)
 let elapsedTimer = null
@@ -1133,7 +1232,7 @@ const formattedElapsed = computed(() => {
   return r ? `${m}m ${r}s` : `${m}m`
 })
 
-// ── Overall progress tracking ──────────────────────────────────
+// 鈹€鈹€ Overall progress tracking 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const completedStepsCount = computed(() => {
   const steps = agentDoLive.value.steps.filter(s => s.stage === 'result').length
   const completedTools = agentDoDebug.value.toolLogs.filter(t => t.status === 'completed').length
@@ -1161,9 +1260,9 @@ const streamStatusPhase = computed(() => {
   const lastStep = agentDoLive.value.steps[agentDoLive.value.steps.length - 1]
   if (lastStep?.content) return lastStep.content
   const runningTools = agentDoDebug.value.toolLogs.filter(t => t.status === 'running')
-  if (runningTools.length) return `正在执行: ${runningTools.map(t => t.title).join(', ')}`
-  if (loading.value) return '正在准备…'
-  return 'Agent-Do 正在处理'
+  if (runningTools.length) return `正在执行：${runningTools.map(t => t.title).join(', ')}`
+  if (loading.value) return '正在准备中...'
+  return 'Agent-Do 正在处理中'
 })
 
 const agentDoStepItems = computed(() => agentDoLive.value.steps.slice(-8))
@@ -1198,7 +1297,7 @@ const agentDoCurrentTitle = computed(() => {
   return 'Agent-Do 正在构建项目'
 })
 const previewWaitingText = computed(() => {
-  if (agentDoDebug.value.previewUrl) return '预览地址已经返回，正在载入页面内容。'
+  if (agentDoDebug.value.previewUrl) return '预览地址已经返回，正在加载页面内容。'
   if (agentDoStepItems.value.length) {
     return agentDoStepItems.value[agentDoStepItems.value.length - 1].content
   }
@@ -1211,7 +1310,7 @@ const agentDoAccordionItems = computed(() => {
     items.push({
       key: `step-${step.id}`,
       kind: 'step',
-      icon: '◉',
+      icon: '•',
       title: formatAgentDoStage(step.stage),
       subtitle: step.content,
       detail: step.content,
@@ -1226,7 +1325,7 @@ const agentDoAccordionItems = computed(() => {
     items.push({
       key: 'reasoning',
       kind: 'reasoning',
-      icon: '💡',
+      icon: '思',
       title: '思考过程',
       subtitle: summarizePlainText(agentDoReasoningPreview.value, 88),
       detail: agentDoReasoningPreview.value,
@@ -1244,7 +1343,7 @@ const agentDoAccordionItems = computed(() => {
       kind: 'tool',
       icon: toolIcon(tool),
       title: tool.title,
-      subtitle: `${summarizeToolLog(tool)} · 耗时 ${formatToolDuration(tool)}`,
+      subtitle: `${summarizeToolLog(tool)} / 耗时 ${formatToolDuration(tool)}`,
       detail: '',
       state: tool.status,
       badge: formatToolStatus(tool.status),
@@ -1276,7 +1375,7 @@ const agentDoAccordionItems = computed(() => {
     items.push({
       key: 'answer',
       kind: 'answer',
-      icon: '✦',
+      icon: '✎',
       title: '生成输出',
       subtitle: summarizePlainText(agentDoAnswerPreview.value, 88),
       detail: agentDoAnswerPreview.value,
@@ -1292,7 +1391,7 @@ const agentDoAccordionItems = computed(() => {
     items.push({
       key: 'result',
       kind: 'result',
-      icon: '↗',
+      icon: '→',
       title: '最终预览 URL',
       subtitle: summarizePlainText(agentDoDebug.value.previewUrl, 88),
       detail: agentDoDebug.value.previewUrl,
@@ -1373,7 +1472,7 @@ function buildTraceAccordionItems(trace) {
     items.push({
       key: 'trace-reasoning',
       kind: 'reasoning',
-      icon: '🧠',
+      icon: '思',
       title: '思考过程',
       subtitle: summarizePlainText(reasoning, 88),
       detail: reasoning,
@@ -1391,7 +1490,7 @@ function buildTraceAccordionItems(trace) {
       kind: 'tool',
       icon: toolIcon(tool),
       title: tool.title,
-      subtitle: `${summarizeToolLog(tool)} · 耗时 ${formatToolDuration(tool)}`,
+      subtitle: `${summarizeToolLog(tool)} / 耗时 ${formatToolDuration(tool)}`,
       detail: '',
       state: tool.status,
       badge: formatToolStatus(tool.status),
@@ -1425,7 +1524,7 @@ function buildTraceAccordionItems(trace) {
     items.push({
       key: 'trace-answer',
       kind: 'answer',
-      icon: '✓',
+      icon: '✎',
       title: '生成输出',
       subtitle: summarizePlainText(answer, 88),
       detail: answer,
@@ -1460,7 +1559,7 @@ function buildTraceAccordionItems(trace) {
     items.push({
       key: 'trace-timeline',
       kind: 'timeline',
-      icon: '⏱',
+      icon: '⌛',
       title: '事件时间线',
       subtitle: summarizePlainText(timeline, 88),
       detail: timeline,
@@ -1511,7 +1610,7 @@ const previewStatus = computed(() => {
       kind: busy.value ? 'waiting' : 'idle',
       title: busy.value ? '预览中' : '等待开始',
       subtitle: busy.value ? previewWaitingText.value : '生成完成后会在这里自动显示预览。',
-      chip: busy.value ? '运行中' : '空闲',
+      chip: busy.value ? '进行中' : '空闲',
     }
   }
   if (urlLoadError.value || previewFrameState.value === 'error') {
@@ -1699,7 +1798,7 @@ function buildAgentDoTraceSnapshot() {
   }))
 }
 
-/* [容器池功能暂时禁用]
+/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
 async function loadSandboxPool() {
   sandboxPoolLoading.value = true
   sandboxPoolError.value = ''
@@ -1725,7 +1824,7 @@ async function toggleSandboxPool() {
 function toggleAgentDoDebug() {
   showAgentDoDebug.value = !showAgentDoDebug.value
   if (showAgentDoDebug.value) {
-    // showSandboxPool.value = false // [容器池功能暂时禁用]
+    // showSandboxPool.value = false // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
     showWorkspaceFiles.value = false
   }
 }
@@ -1777,13 +1876,18 @@ function syncConversationRoute(id) {
   const nextId = String(id || '').trim()
   const currentId = String(route.query.cid || '').trim()
   if (!nextId || currentId === nextId) return
+  const { new: _newConversationFlag, ...restQuery } = route.query || {}
   router.replace({
     path: '/workshop',
     query: {
-      ...route.query,
+      ...restQuery,
       cid: nextId,
     },
   })
+}
+
+function routeRequestsNewConversation() {
+  return String(route.query.new || '').trim() === '1'
 }
 
 function emitWorkshopHistoryChanged() {
@@ -1822,6 +1926,10 @@ function applyConversation(conversation) {
   })
 }
 
+async function waitForConversationApply() {
+  await nextTick()
+}
+
 async function persistConversations() {
   if (historyHydrating || !historyReady.value || !currentUser.value?.username || !currentConversationId.value) return
   if (persistInFlight) return persistInFlight
@@ -1829,6 +1937,10 @@ async function persistConversations() {
     const snapshot = buildConversationSnapshot()
     const nextList = [...conversationList.value]
     const index = nextList.findIndex((item) => item.id === snapshot.id)
+    const existingConversation = index >= 0 ? nextList[index] : null
+    if (!hasConversationChanged(existingConversation, snapshot) && existingConversation) {
+      return existingConversation
+    }
     if (index >= 0) {
       nextList[index] = {
         ...nextList[index],
@@ -1878,16 +1990,26 @@ async function flushPendingPersist() {
   await persistConversations()
 }
 
-async function createNewConversation() {
+async function createNewConversation(options = {}) {
+  const { startRename: shouldStartRename = true } = options
   await flushPendingPersist()
   const conversation = createEmptyConversation()
   conversationList.value = [conversation, ...conversationList.value]
   syncConversationPageById(conversation.id)
   applyConversation(conversation)
+  await waitForConversationApply()
   await persistConversations()
   emitWorkshopHistoryChanged()
   sidebarExpanded.value = true
-  startRename(conversation.id)
+  if (shouldStartRename) {
+    startRename(conversation.id)
+  }
+  return conversation
+}
+
+async function handleExternalCreateConversation() {
+  if (!historyReady.value || busy.value) return
+  await createNewConversation({ startRename: false })
 }
 
 async function switchConversation(id) {
@@ -1942,6 +2064,7 @@ async function loadWorkshopHistory() {
     conversationList.value = [current]
     historyReady.value = true
     applyConversation(current)
+    await waitForConversationApply()
     await persistConversations()
     emitWorkshopHistoryChanged()
     return
@@ -1950,6 +2073,24 @@ async function loadWorkshopHistory() {
   applyConversation(current)
   historyReady.value = true
   emitWorkshopHistoryChanged()
+  if (routeRequestsNewConversation()) {
+    await handleExternalCreateConversation()
+  }
+}
+
+function normalizeConversationComparable(conversation) {
+  return JSON.stringify({
+    id: String(conversation?.id || ''),
+    title: String(conversation?.title || ''),
+    createdAt: String(conversation?.createdAt || ''),
+    messages: Array.isArray(conversation?.messages) ? conversation.messages : [],
+    preview: conversation?.preview || {},
+  })
+}
+
+function hasConversationChanged(existingConversation, snapshot) {
+  if (!existingConversation) return true
+  return normalizeConversationComparable(existingConversation) !== normalizeConversationComparable(snapshot)
 }
 
 async function logout() {
@@ -2012,14 +2153,25 @@ async function commitRename(id) {
   cancelRename()
 
   try {
-    if (currentConversationId.value === id) {
-      await persistConversations()
-    } else {
-      await saveWorkshopConversation(nextList[index])
+    const payload = currentConversationId.value === id
+      ? {
+          ...buildConversationSnapshot(),
+          title,
+        }
+      : nextList[index]
+    const saved = await saveWorkshopConversation(payload)
+    const savedIndex = conversationList.value.findIndex((item) => item.id === id)
+    if (savedIndex >= 0) {
+      const merged = [...conversationList.value]
+      merged[savedIndex] = {
+        ...merged[savedIndex],
+        ...saved,
+      }
+      conversationList.value = merged
     }
     emitWorkshopHistoryChanged()
   } catch (e) {
-    // 改名先保证前端立即生效；若后端同步失败，保留当前标题，避免用户感觉“没反应”。
+    // 改名先保证前端立即生效；若后端同步失败，保留当前标题，避免用户感觉“没有反应”。
     console.error('rename conversation failed:', e)
   }
 }
@@ -2031,7 +2183,7 @@ function formatConversationTime(raw) {
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-/* [容器池功能暂时禁用]
+/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
 function formatPoolTime(raw) {
   if (!raw) return '-'
   const date = new Date(raw)
@@ -2048,16 +2200,16 @@ function formatPoolTime(raw) {
 function formatIdleTtl(ms) {
   const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000))
   if (!totalSeconds) return '-'
-  if (totalSeconds < 60) return `${totalSeconds} 秒`
+  if (totalSeconds < 60) return `${totalSeconds} 绉抈
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`
+  return seconds ? `${minutes} 鍒?${seconds} 绉抈 : `${minutes} 鍒嗛挓`
 }
 
 function formatReclaimReason(reason) {
   const map = {
-    'idle-timeout': '空闲超时回收',
-    'pool-limit': '超过容器池上限',
+    'idle-timeout': '绌洪棽瓒呮椂鍥炴敹',
+    'pool-limit': '瓒呰繃瀹瑰櫒姹犱笂闄?,
   }
   return map[reason] || reason || '-'
 }
@@ -2092,12 +2244,12 @@ function summarizePlainText(text, maxLength = 120) {
 }
 
 function toolIcon(tool) {
-  if (tool.status === 'error') return '⚠'
-  if (tool.status === 'completed') return '✓'
-  if (tool.title?.toLowerCase().includes('read')) return '📄'
-  if (tool.title?.toLowerCase().includes('bash') || tool.title?.toLowerCase().includes('command')) return '⌘'
-  if (tool.title?.toLowerCase().includes('write') || tool.title?.toLowerCase().includes('edit')) return '✎'
-  return tool.status === 'running' ? '◌' : '◦'
+  if (tool.status === 'error') return '!'
+  if (tool.status === 'completed') return 'OK'
+  if (tool.title?.toLowerCase().includes('read')) return 'READ'
+  if (tool.title?.toLowerCase().includes('bash') || tool.title?.toLowerCase().includes('command')) return 'CMD'
+  if (tool.title?.toLowerCase().includes('write') || tool.title?.toLowerCase().includes('edit')) return 'EDIT'
+  return tool.status === 'running' ? 'RUN' : '...'
 }
 
 function formatToolDuration(tool) {
@@ -2114,7 +2266,7 @@ function formatToolDuration(tool) {
 function summarizeToolLog(tool) {
   const content = tool.error || tool.output || tool.input || ''
   const normalized = String(content).replace(/\s+/g, ' ').trim()
-  if (!normalized) return 'Agent-Do 正在处理该步骤…'
+  if (!normalized) return 'Agent-Do 正在处理这个步骤...'
   if (normalized.length <= 180) return normalized
   return `${normalized.slice(0, 180)}...`
 }
@@ -2140,7 +2292,7 @@ function toggleAllAccordionItems() {
   }
 }
 
-/** 右侧仅在整段 HTML 生成结束（及上传结束）后首次展示，流式过程中不更新 iframe */
+/** 鍙充晶浠呭湪鏁存 HTML 鐢熸垚缁撴潫锛堝強涓婁紶缁撴潫锛夊悗棣栨灞曠ず锛屾祦寮忚繃绋嬩腑涓嶆洿鏂?iframe */
 function flushPreviewImmediate(html) {
   previewHtml.value = html
   previewMode.value = 'html'
@@ -2191,7 +2343,7 @@ function copyHtmlSegment(text, id) {
   })
 }
 
-// ── Textarea auto-resize ───────────────────────────────────────
+// 鈹€鈹€ Textarea auto-resize 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function autoResize() {
   const el = textareaEl.value
   if (!el) return
@@ -2199,14 +2351,14 @@ function autoResize() {
   el.style.height = Math.min(el.scrollHeight, 160) + 'px'
 }
 
-// ── Title extraction ───────────────────────────────────────────
+// Title extraction
 function extractTitle(text) {
-  const m = text.match(/帮我(?:生成|做|创建|开发|写|设计).*?([^\s，,。！!？?]{2,8})(?:系统|平台|工具|页面|应用|网站|程序)?/)
+  const m = text.match(/帮我(?:生成|做|创建|开发|设计).*?([^\s，。！？!?,]{2,8})(?:系统|平台|工具|页面|应用|网站|程序)?/)
   if (m) return m[1] + (text.match(/系统|平台|工具|页面|应用|网站|程序/) || [''])[0]
   return null
 }
 
-// ── 流式 HTML 源码展示（勿当 Markdown 解析，仅转义 + 换行） ───────
+// 流式 HTML 源码展示：不做 Markdown 解析，仅转义 + 换行
 function renderEscapedSource(text) {
   if (!text) return ''
   return text
@@ -2255,9 +2407,32 @@ function formatTodoContent(todos) {
     .join('\n')
 }
 
-function buildAgentDoChatMarkdown({ answer, previewUrl, elapsed } = {}) {
+function sanitizeAgentDoFinalAnswer(answer, { previewUrl, acceptance } = {}) {
+  const text = String(answer || '').trim()
+  if (!text) return ''
+
+  const hasPreview = Boolean(String(previewUrl || '').trim())
+  const acceptancePassed = Boolean(acceptance?.passed)
+  if (!hasPreview) return text
+
+  const lines = text
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+
+  const suspiciousPermissionPattern = /\/workspace|写权限|权限问题|sudo chown|docker run -u root|\/data\/workspace|目录没有写权限/i
+  const filtered = lines.filter((line) => !suspiciousPermissionPattern.test(line))
+  const cleaned = filtered.join('\n').trim()
+
+  if (!cleaned && acceptancePassed) {
+    return '页面已生成完成，预览可直接打开。'
+  }
+  return cleaned || text
+}
+
+function buildAgentDoChatMarkdown({ answer, previewUrl, elapsed, acceptance } = {}) {
   const sections = []
-  const finalAnswer = String(answer || '').trim()
+  const finalAnswer = sanitizeAgentDoFinalAnswer(answer, { previewUrl, acceptance })
   if (finalAnswer) {
     sections.push(finalAnswer)
   }
@@ -2278,7 +2453,7 @@ function formatAcceptanceSummary(acceptance) {
   const rounds = Number(acceptance.repairRoundsUsed || 0)
   if (acceptance.passed) {
     return rounds > 0
-      ? `已通过浏览器自动验收，并自动修复 ${rounds} 轮。`
+      ? `已通过浏览器自动验收，并自动修复了 ${rounds} 轮。`
       : '已通过浏览器自动验收。'
   }
   const lead = issues[0] || warnings[0] || '自动验收仍未通过'
@@ -2292,15 +2467,17 @@ function buildAgentDoAssistantSegments({ previewUrl, elapsed } = {}) {
     answer: agentDoLive.value.answer,
     previewUrl: previewUrl || agentDoDebug.value.previewUrl,
     elapsed,
+    acceptance: null,
   })
   if (!content) return []
   return [{ kind: 'text', content }]
 }
 
-function syncAgentDoStreamingAnswer({ previewUrl } = {}) {
+function syncAgentDoStreamingAnswer({ previewUrl, acceptance } = {}) {
   const content = buildAgentDoChatMarkdown({
     answer: agentDoLive.value.answer,
     previewUrl: previewUrl || agentDoDebug.value.previewUrl,
+    acceptance,
   })
   if (!content) return null
   return upsertStreamingText('agentDo-answer', content)
@@ -2475,7 +2652,7 @@ function applyAgentDoStreamEvent(event) {
       stage: 'result',
       content: '预览地址已生成，可以开始加载页面。',
     })
-    syncAgentDoStreamingAnswer({ previewUrl: event.url })
+    syncAgentDoStreamingAnswer({ previewUrl: event.url, acceptance: event.acceptance })
     return event
   }
 
@@ -2497,7 +2674,7 @@ function applyAgentDoStreamEvent(event) {
   return null
 }
 
-// ── HTML 输出兜底清洗：避免说明文字/代码围栏混入部署文件 ───────
+// 鈹€鈹€ HTML 杈撳嚭鍏滃簳娓呮礂锛氶伩鍏嶈鏄庢枃瀛?浠ｇ爜鍥存爮娣峰叆閮ㄧ讲鏂囦欢 鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function normalizeGeneratedHtml(raw) {
   if (!raw) return ''
   let s = raw
@@ -2505,11 +2682,11 @@ function normalizeGeneratedHtml(raw) {
     .replace(/\r\n/g, '\n')
     .trim()
 
-  // 兼容模型误输出 markdown 围栏
+  // 鍏煎妯″瀷璇緭鍑?markdown 鍥存爮
   s = s.replace(/^```(?:html)?\s*/i, '')
   s = s.replace(/\s*```$/i, '')
 
-  // 优先从 doctype 起截取；否则从 <html 起截取
+  // 浼樺厛浠?doctype 璧锋埅鍙栵紱鍚﹀垯浠?<html 璧锋埅鍙?
   const lower = s.toLowerCase()
   const docIdx = lower.indexOf('<!doctype html')
   const htmlIdx = lower.indexOf('<html')
@@ -2518,7 +2695,7 @@ function normalizeGeneratedHtml(raw) {
   else if (htmlIdx !== -1) start = htmlIdx
   if (start > 0) s = s.slice(start)
 
-  // 若存在 </html>，截断其后的噪声文本
+  // 鑻ュ瓨鍦?</html>锛屾埅鏂叾鍚庣殑鍣０鏂囨湰
   const endHtml = s.toLowerCase().lastIndexOf('</html>')
   if (endHtml !== -1) {
     s = s.slice(0, endHtml + '</html>'.length)
@@ -2527,7 +2704,7 @@ function normalizeGeneratedHtml(raw) {
   return s.trim()
 }
 
-// 强制让模型生成的单文件页面“铺满”当前预览 iframe，避免出现左右大片留白或右侧固定宽度导致的“长度不匹配”。
+// 寮哄埗璁╂ā鍨嬬敓鎴愮殑鍗曟枃浠堕〉闈⑩€滈摵婊♀€濆綋鍓嶉瑙?iframe锛岄伩鍏嶅嚭鐜板乏鍙冲ぇ鐗囩暀鐧芥垨鍙充晶鍥哄畾瀹藉害瀵艰嚧鐨勨€滈暱搴︿笉鍖归厤鈥濄€?
 function enforceWorkshopPreviewFit(html) {
   if (!html) return html
   const fitCss = `
@@ -2553,14 +2730,14 @@ html, body {
 }
 `
 
-  // 优先插入到 </head> 前，保证更高优先级且不依赖模型结构
+  // 浼樺厛鎻掑叆鍒?</head> 鍓嶏紝淇濊瘉鏇撮珮浼樺厛绾т笖涓嶄緷璧栨ā鍨嬬粨鏋?
   if (html.includes('</head>')) {
     return html.replace('</head>', `<style>${fitCss}</style></head>`)
   }
   return `${html}<style>${fitCss}</style>`
 }
 
-// ── Send message ───────────────────────────────────────────────
+// 鈹€鈹€ Send message 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 async function sendLegacyMessage(options = {}) {
   const text = (options.textOverride ?? inputText.value).trim()
   if (!text || busy.value) return
@@ -2600,7 +2777,7 @@ async function sendLegacyMessage(options = {}) {
     for await (const part of streamGenerate(
       text,
       '你是资深前端与交互设计师，擅长用单个 HTML 文件实现完整、美观、可交互的页面；'
-      + '面向用户的说明需写清功能定位、结构亮点，并交代两阶段输出与右侧预览的进度含义。'
+      + '面向用户的说明需要写清功能定位、结构亮点，并交代流式输出与右侧预览的进度含义。'
     )) {
       if (part.kind === 'friendly') {
         streamingFriendly.value += part.content
@@ -2628,7 +2805,7 @@ async function sendLegacyMessage(options = {}) {
         {
           kind: 'text',
           content:
-            `${hint}⚠️ 未识别到页面 HTML（模型需先写说明，再单独一行输出分隔符 \`<<<HTML_BEGIN>>>\`，其后跟完整 HTML）。请重试或简化需求。`,
+            `${hint}未识别到页面 HTML。请让模型先输出说明，再单独一行输出分隔符 \`<<<HTML_BEGIN>>>\`，其后紧跟完整 HTML。请重试或简化需求。`,
         },
       ]
     } else {
@@ -2636,10 +2813,10 @@ async function sendLegacyMessage(options = {}) {
       streamingFriendly.value = ''
       streamingHtml.value = ''
 
-      // 生成完成后，上传到 OSS
+      // 生成完成后上传到 OSS
       loading.value = true
       assistantMsg.segments = [
-        { kind: 'text', content: '📤 正在上传文件…' },
+        { kind: 'text', content: '正在上传文件...' },
       ]
       await nextTick()
       scrollBottom()
@@ -2647,13 +2824,13 @@ async function sendLegacyMessage(options = {}) {
       const fileName = `workshop-${Date.now()}.html`
       const { url } = await uploadHTML(fileName, cleanedHTML)
 
-      // 更新消息：说明 + 完成提示 + 预览卡片 + 窄列展示的 HTML 源码
+      // 更新消息：说明 + 完成提示 + 预览卡片 + 折叠展示的 HTML 源码
       assistantMsg.segments = [
-        { kind: 'text', content: '✅ **已完成** 已上传，可在右侧预览或新标签打开。' },
+        { kind: 'text', content: '✓ **已完成**，已上传，可在右侧预览或新标签页打开。' },
         {
           kind: 'card',
           type: 'result',
-          icon: '🌐',
+          icon: 'HTML',
           title: '在线预览',
           content: url,
           open: true,
@@ -2661,7 +2838,7 @@ async function sendLegacyMessage(options = {}) {
         { kind: 'html_source', content: cleanedHTML },
       ]
 
-      // 右侧仅在全部生成并上传成功后首次用 URL 加载（流式过程中不刷新 iframe）
+      // 右侧仅在全部生成并上传成功后首次用 URL 加载，流式过程中不刷新 iframe
       previewUrl.value = url
       previewMode.value = 'url'
       iframeKey.value++
@@ -2673,8 +2850,8 @@ async function sendLegacyMessage(options = {}) {
     streamingFriendly.value = ''
     streamingHtml.value = ''
     const errorMsg = e.name === 'AbortError'
-      ? '⚠️ 请求超时，请稍后重试'
-      : `⚠️ 请求失败：${e.message}`
+      ? '请求超时，请稍后重试'
+      : `请求失败：${e.message}`
     const segs = [{ kind: 'text', content: errorMsg }]
     if (cleanedHTML?.trim()) {
       segs.push({ kind: 'html_source', content: cleanedHTML.trim() })
@@ -2698,6 +2875,10 @@ async function sendLegacyMessage(options = {}) {
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || busy.value) return
+
+  if (shouldForkFailedSingleHtmlConversation()) {
+    await createNewConversation({ startRename: false })
+  }
 
   const previousPreviewState = snapshotPreviewState()
   const title = extractTitle(text)
@@ -2795,6 +2976,25 @@ async function sendMessage() {
         stage: 'repair',
         content: '检测到流式中断，但当前工作区还没有可继续修复的文件，已跳过自动续修以避免重建默认脚手架。',
       })
+    } else if (streamErrorMessage && shouldRetrySingleHtmlStreamError(streamErrorMessage)) {
+      agentDoLive.value.steps.push({
+        id: `html-recovery-${Date.now()}`,
+        stage: 'repair',
+        content: '检测到 HTML 预览会话异常，正在自动重试并重建可预览页面...',
+      })
+      syncAgentDoStreamingPlaceholder('检测到 HTML 预览会话异常，正在自动重试...')
+      const recovery = await runAgentDoAttempt([
+        '刚才这轮 HTML 生成已经失败过一次。',
+        '不要提问，直接重新生成一个可以立即预览的单文件页面。',
+        '请务必在 /workspace/index.html 中产出完整 HTML，保证可以直接预览。',
+        `原始需求：${text}`,
+      ].join('\n'))
+      if (recovery.attemptResult?.url) {
+        finalResult = recovery.attemptResult
+        streamErrorMessage = ''
+      } else if (recovery.attemptStreamError) {
+        streamErrorMessage = recovery.attemptStreamError
+      }
     }
 
     agentDoDebug.value.requestCompletedAt = Date.now()
@@ -2803,21 +3003,22 @@ async function sendMessage() {
     const baseSegments = buildAgentDoAssistantSegments({
       previewUrl: finalResult?.url,
       elapsed: formattedElapsed.value,
+      acceptance: finalResult?.acceptance,
     })
     const extraSegments = []
     const acceptanceSummary = formatAcceptanceSummary(finalResult?.acceptance)
     if (streamErrorMessage) {
       extraSegments.push({
         kind: 'text',
-        content: '⚠️ 本轮生成中途出现过异常，当前预览可能是自动补全后的结果。如果效果仍不对，继续在当前对话里让我“基于现有工程继续修正”会更稳。',
+        content: '本轮生成中途出现过异常，当前预览可能是自动补全后的结果。如果效果仍不对，继续在当前对话里让我“基于现有工程继续修正”会更稳。',
       })
     }
     if (acceptanceSummary) {
       extraSegments.push({
         kind: 'text',
         content: finalResult?.acceptance?.passed
-          ? `✅ ${acceptanceSummary}`
-          : `⚠️ ${acceptanceSummary}`,
+          ? `✎${acceptanceSummary}`
+          : `鈿狅笍 ${acceptanceSummary}`,
       })
     }
     assistantMsg.segments = [...extraSegments, ...baseSegments]
@@ -2837,7 +3038,7 @@ async function sendMessage() {
     assistantMsg.segments = [
       {
         kind: 'text',
-        content: `⚠️ Agent-Do 生成失败：${_error instanceof Error ? _error.message : String(_error)}`,
+        content: `Agent-Do 生成失败：${_error instanceof Error ? _error.message : String(_error)}`,
       },
     ]
     assistantMsg.time = nowTime()
@@ -2886,7 +3087,33 @@ function clearChat() {
   persistConversations()
 }
 
+function messageContainsAgentDoFailure(message) {
+  if (!message || message.role !== 'assistant') return false
+  const legacyContent = String(message.content || '')
+  if (
+    legacyContent.includes('Agent-Do 生成失败')
+    || legacyContent.includes('当前 session 没有可在线运行的项目')
+  ) {
+    return true
+  }
+  const segments = Array.isArray(message.segments) ? message.segments : []
+  return segments.some((segment) => {
+    const content = String(segment?.content || '')
+    return content.includes('Agent-Do 生成失败') || content.includes('当前 session 没有可在线运行的项目')
+  })
+}
+
+function shouldForkFailedSingleHtmlConversation() {
+  if (generationMode.value !== 'single_html') return false
+  if (!Array.isArray(messages.value) || messages.value.length === 0) return false
+  if (previewUrl.value || previewHtml.value || previewCode.value?.content) return false
+  return true
+}
+
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+  }
   try {
     await loadWorkshopHistory()
   } catch (e) {
@@ -2952,15 +3179,64 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+  }
   stopDrag()
   stopElapsedTimer()
   if (persistTimer) clearTimeout(persistTimer)
   persistConversations()
 })
+
+watch(
+  () => route.query.new,
+  async (flag) => {
+    if (String(flag || '').trim() !== '1' || !historyReady.value) return
+    await handleExternalCreateConversation()
+  },
+)
 </script>
 
 <style scoped>
 .workshop {
+  --welcome-shell-bg:
+    radial-gradient(circle at 82% 12%, rgba(255, 212, 140, 0.18), transparent 18%),
+    radial-gradient(circle at 14% 18%, rgba(59, 130, 246, 0.12), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 245, 249, 0.72));
+  --welcome-panel-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(233, 241, 251, 0.72)),
+    radial-gradient(circle at 50% 12%, rgba(255, 244, 214, 0.9), transparent 11%),
+    radial-gradient(circle at 18% 36%, rgba(159, 196, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 86% 28%, rgba(255, 213, 161, 0.18), transparent 18%),
+    linear-gradient(180deg, #edf4fb 0%, #d5e1ef 38%, #c5d2e1 100%);
+  --welcome-panel-shadow: 0 28px 70px rgba(148, 163, 184, 0.28);
+  --welcome-meta-color: rgba(71, 85, 105, 0.92);
+  --welcome-title-color: #0f172a;
+  --welcome-subtitle-color: rgba(71, 85, 105, 0.72);
+  --welcome-hero-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(226, 232, 240, 0.32)),
+    linear-gradient(180deg, rgba(196, 210, 226, 0.4), rgba(242, 247, 251, 0.72));
+  --welcome-hero-border: rgba(148, 163, 184, 0.22);
+  --welcome-hero-overlay:
+    radial-gradient(circle at 50% 16%, rgba(255, 249, 235, 0.7), transparent 12%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(148, 163, 184, 0.08));
+  --welcome-art-bg:
+    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.88), transparent 9%),
+    radial-gradient(circle at 16% 40%, rgba(147, 197, 253, 0.2), transparent 22%),
+    radial-gradient(circle at 84% 28%, rgba(251, 191, 36, 0.16), transparent 16%);
+  --welcome-eyebrow-border: rgba(148, 163, 184, 0.28);
+  --welcome-eyebrow-bg: rgba(255, 255, 255, 0.52);
+  --welcome-eyebrow-color: rgba(51, 65, 85, 0.88);
+  --welcome-headline-color: #0f172a;
+  --welcome-desc-color: rgba(51, 65, 85, 0.88);
+  --welcome-composer-bg: rgba(255, 255, 255, 0.64);
+  --welcome-composer-border: rgba(148, 163, 184, 0.22);
+  --welcome-composer-shadow: 0 20px 48px rgba(148, 163, 184, 0.24);
+  --welcome-textarea-color: #0f172a;
+  --welcome-placeholder-color: rgba(100, 116, 139, 0.72);
+  --welcome-send-bg: rgba(99, 102, 241, 0.14);
+  --welcome-send-bg-hover: rgba(99, 102, 241, 0.24);
+  --welcome-send-color: #3730a3;
   display: flex;
   height: calc(100vh - 48px);
   overflow: hidden;
@@ -2971,6 +3247,49 @@ onBeforeUnmount(() => {
   border-radius: 28px;
   border: 1px solid var(--workshop-border);
   box-shadow: var(--shadow-soft);
+}
+
+.workshop--dark {
+  --welcome-shell-bg:
+    radial-gradient(circle at 78% 12%, rgba(255, 236, 184, 0.12), transparent 18%),
+    radial-gradient(circle at 16% 18%, rgba(129, 140, 248, 0.14), transparent 22%),
+    linear-gradient(180deg, rgba(100, 116, 139, 0.08), rgba(15, 23, 42, 0.02));
+  --welcome-panel-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(9, 12, 18, 0.12)),
+    radial-gradient(circle at 48% 12%, rgba(255, 245, 214, 0.28), transparent 12%),
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.12), transparent 8%),
+    radial-gradient(circle at 80% 34%, rgba(34, 43, 58, 0.4), transparent 20%),
+    radial-gradient(circle at 18% 34%, rgba(160, 174, 192, 0.14), transparent 24%),
+    linear-gradient(180deg, #6a7d91 0%, #33475d 34%, #1b2430 68%, #0a0f18 100%);
+  --welcome-panel-shadow: 0 28px 70px rgba(15, 23, 42, 0.24);
+  --welcome-meta-color: rgba(226, 232, 240, 0.9);
+  --welcome-title-color: #f8fafc;
+  --welcome-subtitle-color: rgba(226, 232, 240, 0.42);
+  --welcome-hero-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18)),
+    linear-gradient(180deg, rgba(85, 102, 120, 0.35), rgba(8, 11, 18, 0.82));
+  --welcome-hero-border: rgba(255, 255, 255, 0.08);
+  --welcome-hero-overlay:
+    radial-gradient(circle at 50% 16%, rgba(255, 240, 204, 0.18), transparent 12%),
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.08), transparent 7%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(2, 6, 12, 0.22));
+  --welcome-art-bg:
+    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.24), transparent 9%),
+    radial-gradient(circle at 82% 30%, rgba(16, 24, 40, 0.3), transparent 18%),
+    radial-gradient(circle at 15% 40%, rgba(16, 24, 40, 0.34), transparent 22%);
+  --welcome-eyebrow-border: rgba(255, 255, 255, 0.14);
+  --welcome-eyebrow-bg: rgba(255, 255, 255, 0.08);
+  --welcome-eyebrow-color: rgba(248, 250, 252, 0.82);
+  --welcome-headline-color: #ffffff;
+  --welcome-desc-color: rgba(226, 232, 240, 0.82);
+  --welcome-composer-bg: rgba(40, 43, 52, 0.84);
+  --welcome-composer-border: rgba(255, 255, 255, 0.08);
+  --welcome-composer-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
+  --welcome-textarea-color: #f8fafc;
+  --welcome-placeholder-color: rgba(226, 232, 240, 0.5);
+  --welcome-send-bg: rgba(255, 255, 255, 0.16);
+  --welcome-send-bg-hover: rgba(255, 255, 255, 0.26);
+  --welcome-send-color: #ffffff;
 }
 
 .history-sidebar {
@@ -3259,6 +3578,186 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+.chat-panel--welcome {
+  flex: 1;
+  width: 100%;
+}
+
+.chat-panel--welcome .welcome-screen {
+  position: static;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.welcome-screen__panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 18px 18px;
+  border-radius: 30px;
+  overflow: hidden;
+  background: var(--welcome-panel-bg);
+  box-shadow: var(--welcome-panel-shadow);
+}
+
+.welcome-screen__meta {
+  padding: 4px 4px 18px;
+  color: var(--welcome-meta-color);
+}
+
+.welcome-screen__title-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.welcome-screen__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--welcome-title-color);
+}
+
+.welcome-screen__subtitle {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--welcome-subtitle-color);
+}
+
+.welcome-screen__hero {
+  flex: 1;
+  min-height: 0;
+  padding: 28px 22px;
+  border-radius: 28px;
+  background: var(--welcome-hero-bg);
+  border: 1px solid var(--welcome-hero-border);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.welcome-screen__hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--welcome-hero-overlay);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.welcome-screen__art {
+  position: absolute;
+  inset: 0;
+  background: var(--welcome-art-bg);
+  opacity: 0.85;
+}
+
+.welcome-screen__copy {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  min-width: 0;
+  padding: 24px 22px;
+}
+
+.welcome-screen__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 1px solid var(--welcome-eyebrow-border);
+  background: var(--welcome-eyebrow-bg);
+  color: var(--welcome-eyebrow-color);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.welcome-screen__headline {
+  margin-top: 26px;
+  color: var(--welcome-headline-color);
+  font-size: clamp(2.3rem, 5vw, 3.9rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.welcome-screen__desc {
+  margin-top: 18px;
+  max-width: 520px;
+  color: var(--welcome-desc-color);
+  font-size: 1.08rem;
+  line-height: 1.75;
+}
+
+.welcome-screen__composer {
+  margin-top: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 24px;
+  background: var(--welcome-composer-bg);
+  border: 1px solid var(--welcome-composer-border);
+  box-shadow: var(--welcome-composer-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.welcome-screen__textarea {
+  flex: 1;
+  min-height: 56px;
+  padding: 14px 16px;
+  border: none;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: var(--welcome-textarea-color);
+  font-size: 1rem;
+  line-height: 1.6;
+  font-family: inherit;
+}
+
+.welcome-screen__textarea::placeholder {
+  color: var(--welcome-placeholder-color);
+}
+
+.welcome-screen__actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.mode-switch--welcome {
+  margin-right: 0;
+}
+
+.welcome-screen__send {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--welcome-send-bg);
+  color: var(--welcome-send-color);
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+}
+
+.welcome-screen__send:hover:not(:disabled) {
+  background: var(--welcome-send-bg-hover);
+  transform: translateY(-1px);
+}
+
+.welcome-screen__send:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .chat-header {
   display: flex;
   align-items: flex-start;
@@ -3275,6 +3774,22 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.chat-title-input {
+  min-width: 0;
+  width: min(320px, 100%);
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--topbar-border);
+  background: var(--workshop-panel-bg);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  outline: none;
+}
+.chat-title-input:focus {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.16);
 }
 .chat-title { font-weight: 600; font-size: 0.95rem; }
 .title-edit-btn {
@@ -3346,7 +3861,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-/* VMarkdownView 在紫色气泡内：强制浅色字，避免 dark 主题与背景冲突 */
+/* VMarkdownView 鍦ㄧ传鑹叉皵娉″唴锛氬己鍒舵祬鑹插瓧锛岄伩鍏?dark 涓婚涓庤儗鏅啿绐?*/
 .user-bubble--md :deep(.markdown-body) {
   color: #fff !important;
   background: transparent !important;
@@ -3934,7 +4449,7 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 
-/* 流式 HTML：加宽、压低高度（约一屏内短条预览），与图中红框比例接近 */
+/* 娴佸紡 HTML锛氬姞瀹姐€佸帇浣庨珮搴︼紙绾︿竴灞忓唴鐭潯预览锛夛紝涓庡浘涓孩妗嗘瘮渚嬫帴杩?*/
 .stream-code-shell {
   width: 100%;
   max-width: 100%;
@@ -4001,7 +4516,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-/* 生成结束后仍展示源码：与流式区同宽，同样压低高度 */
+/* 鐢熸垚缁撴潫鍚庝粛灞曠ず婧愮爜锛氫笌娴佸紡鍖哄悓瀹斤紝鍚屾牱鍘嬩綆楂樺害 */
 .agent-html-source {
   width: 100%;
   max-width: 100%;
@@ -4333,11 +4848,20 @@ onBeforeUnmount(() => {
 }
 
 .workspace-tree-icon {
-  width: 18px;
-  min-width: 18px;
+  min-width: 42px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .workspace-tree-label {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4447,7 +4971,7 @@ onBeforeUnmount(() => {
   padding: 16px;
 }
 
-/* [容器池功能暂时禁用]
+/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
 .sandbox-pool-panel {
   flex: 1;
   min-height: 0;
@@ -4868,7 +5392,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ── Stream status bar (sticky top) ───────────────────────── */
+/* 鈹€鈹€ Stream status bar (sticky top) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .stream-status-bar {
   position: sticky;
   top: 0;
@@ -4960,7 +5484,7 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
-/* ── Scroll to bottom button ─────────────────────────────── */
+/* 鈹€鈹€ Scroll to bottom button 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .scroll-to-bottom-btn {
   position: absolute;
   bottom: 80px;
@@ -5009,7 +5533,7 @@ onBeforeUnmount(() => {
   transform: translateX(-50%) translateY(12px);
 }
 
-/* ── Agent-Do timer in header ────────────────────────────── */
+/* 鈹€鈹€ Agent-Do timer in header 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .agentDo-live-timer {
   display: flex;
   align-items: center;
@@ -5031,7 +5555,7 @@ onBeforeUnmount(() => {
   opacity: 0.7;
 }
 
-/* ── Agent-Do progress bar ───────────────────────────────── */
+/* 鈹€鈹€ Agent-Do progress bar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .agentDo-progress-bar {
   margin: 0 0 14px;
   padding: 10px 12px;
@@ -5104,9 +5628,37 @@ onBeforeUnmount(() => {
   .history-sidebar.expanded {
     width: 270px;
   }
+
+  .welcome-screen {
+    padding: 18px;
+  }
+
+  .welcome-screen__panel {
+    padding: 20px 16px 16px;
+    border-radius: 24px;
+  }
+
+  .welcome-screen__hero {
+    padding: 22px 16px;
+    border-radius: 24px;
+  }
+
+  .welcome-screen__copy {
+    padding: 16px 14px;
+  }
 }
 
 @media (max-width: 768px) {
+  .workshop {
+    min-height: 0;
+    height: calc(100vh - 24px);
+    border-radius: 0;
+  }
+
+  .workspace-main {
+    min-height: 0;
+  }
+
   .history-sidebar {
     width: 64px;
     padding: 12px 10px 14px;
@@ -5132,10 +5684,88 @@ onBeforeUnmount(() => {
     border-radius: 22px;
   }
 
-  /* [容器池功能暂时禁用]
+  .welcome-screen {
+    padding: 12px;
+  }
+
+  .welcome-screen__panel {
+    padding: 16px 14px 14px;
+    border-radius: 24px;
+  }
+
+  .welcome-screen__hero {
+    padding: 18px 14px;
+    border-radius: 22px;
+  }
+
+  .welcome-screen__copy {
+    padding: 12px 10px;
+  }
+
+  .welcome-screen__headline {
+    margin-top: 18px;
+    font-size: 2.5rem;
+  }
+
+  .welcome-screen__desc {
+    font-size: 0.95rem;
+  }
+
+  .welcome-screen__composer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 20px;
+  }
+
+  .welcome-screen__textarea {
+    min-height: 48px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+
+  .welcome-screen__actions {
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .mode-switch--welcome {
+    flex: 1;
+  }
+
+  .welcome-screen__send {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+  }
+}
+
+@media (max-width: 420px) {
+  .welcome-screen__headline {
+    font-size: 2.1rem;
+  }
+
+  .welcome-screen__copy {
+    width: 100%;
+    padding: 8px 6px;
+  }
+
+  .welcome-screen__desc {
+    max-width: none;
+    font-size: 0.9rem;
+  }
+
+  .mode-switch__option {
+    min-width: 76px;
+    padding-inline: 10px;
+  }
+
+  /* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
   .sandbox-pool-grid {
     grid-template-columns: 1fr;
   }
   */
 }
 </style>
+

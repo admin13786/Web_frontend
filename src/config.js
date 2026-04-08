@@ -8,6 +8,9 @@ export const USE_MOCK =
   import.meta.env.VITE_USE_MOCK === 'true' ||
   (import.meta.env.VITE_USE_MOCK !== 'false' && !import.meta.env.VITE_API_BASE)
 
+/** 认证默认走真实后端；仅在显式设置 VITE_AUTH_USE_MOCK=true 时才使用 Mock。 */
+export const USE_AUTH_MOCK = import.meta.env.VITE_AUTH_USE_MOCK === 'true'
+
 /** 视频榜默认 Mock；仅 VITE_RANK_VIDEO_MOCK=false 时请求 /api/ranks/.../video */
 export const USE_RANK_VIDEO_MOCK = import.meta.env.VITE_RANK_VIDEO_MOCK !== 'false'
 
