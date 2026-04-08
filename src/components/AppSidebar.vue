@@ -31,7 +31,7 @@
     </nav>
 
     <section class="app-sidebar__panel">
-      <button type="button" class="workshop-history-create" @click="createConversation">
+      <button type="button" class="workshop-history-create" @click="goToWelcomePage">
         <span class="workshop-history-create__icon">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <path d="M12 5v14M5 12h14" />
@@ -127,10 +127,8 @@ import { logout as logoutApi } from '../api/auth.js'
 import {
   deleteWorkshopConversation,
   fetchWorkshopConversations,
-  saveWorkshopConversation,
 } from '../api/workshopConversations.js'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
-import { createEmptyConversation } from '../utils/workshopHistory.js'
 import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
 defineProps({
@@ -222,15 +220,8 @@ function openConversation(id) {
   })
 }
 
-async function createConversation() {
-  const conversation = createEmptyConversation()
-  try {
-    await saveWorkshopConversation(conversation)
-  } catch (error) {
-    console.error('create workshop conversation failed:', error)
-  }
-  await loadWorkshopHistory()
-  openConversation(conversation.id)
+function goToWelcomePage() {
+  router.push('/home')
 }
 
 function emitWorkshopHistoryChanged() {

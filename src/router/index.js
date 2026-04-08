@@ -10,7 +10,17 @@ const routes = [
     children: [
       {
         path: '',
-        redirect: '/channel',
+        redirect: '/home',
+      },
+      {
+        path: 'home',
+        name: 'Home',
+        component: () => import('../views/HomeView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '欢迎页',
+          description: '选择工作区并开始新的内容创作流程',
+        },
       },
       {
         path: 'channel',
@@ -63,10 +73,6 @@ const routes = [
         },
       },
     ],
-  },
-  {
-    path: '/home',
-    redirect: '/channel',
   },
   {
     path: '/login',
