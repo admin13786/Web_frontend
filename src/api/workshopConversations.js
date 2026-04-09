@@ -43,6 +43,9 @@ export async function deleteWorkshopConversationDeep({ username, conversationId 
   }
 
   const history = await deleteWorkshopConversation(normalizedConversationId)
+  if (history.deleted !== true) {
+    throw new Error(`Conversation not found on server: ${normalizedConversationId}`)
+  }
   const mapping = await deleteAgentDoSessionMapping({
     username: normalizedUsername,
     conversationId: normalizedConversationId,
