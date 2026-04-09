@@ -36,6 +36,10 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/api/workshop-history': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api/page-screenshot': {
         target: 'http://localhost:8000',
         changeOrigin: true,

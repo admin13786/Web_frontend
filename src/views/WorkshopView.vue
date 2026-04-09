@@ -1909,6 +1909,7 @@ function buildConversationSnapshot() {
   return {
     id: currentConversationId.value,
     title: chatTitle.value || '新对话',
+    orderIndex: current?.orderIndex ?? null,
     createdAt: current?.createdAt || new Date().toISOString(),
     messages: cloneMessages(messages.value),
     updatedAt: new Date().toISOString(),
@@ -2054,6 +2055,34 @@ async function waitForConversationApply() {
   await nextTick()
 }
 
+function hasMeaningfulConversationContent(conversation) {
+  if (!conversation) return false
+  const messagesList = Array.isArray(conversation.messages) ? conversation.messages : []
+  if (messagesList.length > 0) return true
+  const preview = conversation.preview || {}
+  if (String(preview.html || '').trim()) return true
+  if (String(preview.url || '').trim()) return true
+  if (String(preview?.code?.content || '').trim()) return true
+  return false
+}
+
+function isUnsavedEmptyDraftConversation(conversation) {
+  if (!conversation) return false
+  return conversation.orderIndex == null && !hasMeaningfulConversationContent(conversation)
+}
+
+function discardUnsavedEmptyDraftConversation(id) {
+  const conversationId = String(id || '').trim()
+  if (!conversationId) return false
+  const conversation = conversationList.value.find((item) => item.id === conversationId)
+  if (!isUnsavedEmptyDraftConversation(conversation)) return false
+  conversationList.value = conversationList.value.filter((item) => item.id !== conversationId)
+  if (currentConversationId.value === conversationId) {
+    currentConversationId.value = ''
+  }
+  return true
+}
+
 async function persistConversations() {
   if (historyHydrating || !historyReady.value || !currentUser.value?.username || !currentConversationId.value) return
   if (persistInFlight) return persistInFlight
@@ -2062,22 +2091,31 @@ async function persistConversations() {
     const nextList = [...conversationList.value]
     const index = nextList.findIndex((item) => item.id === snapshot.id)
     const existingConversation = index >= 0 ? nextList[index] : null
+    const shouldPersist = hasMeaningfulConversationContent(snapshot) || existingConversation?.orderIndex != null
+    const contentChanged = hasConversationContentChanged(existingConversation, snapshot)
+    if (!shouldPersist) {
+      return existingConversation || snapshot
+    }
     if (!hasConversationChanged(existingConversation, snapshot) && existingConversation) {
       return existingConversation
     }
+    const effectiveUpdatedAt = contentChanged
+      ? snapshot.updatedAt
+      : String(existingConversation?.updatedAt || snapshot.updatedAt || '')
     if (index >= 0) {
       nextList[index] = {
         ...nextList[index],
         ...snapshot,
+        updatedAt: effectiveUpdatedAt,
         createdAt: nextList[index].createdAt || snapshot.updatedAt,
       }
     } else {
-      nextList.unshift({
+      nextList.push({
         ...snapshot,
+        updatedAt: effectiveUpdatedAt,
         createdAt: snapshot.updatedAt,
       })
     }
-    nextList.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
     conversationList.value = nextList
     const saved = await saveWorkshopConversation(snapshot)
     const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
@@ -2087,7 +2125,6 @@ async function persistConversations() {
         ...merged[savedIndex],
         ...saved,
       }
-      merged.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       conversationList.value = merged
     }
   })()
@@ -2117,13 +2154,21 @@ async function flushPendingPersist() {
 async function createNewConversation(options = {}) {
   const { startRename: shouldStartRename = true } = options
   await flushPendingPersist()
+  const currentConversation = conversationList.value.find((item) => item.id === currentConversationId.value)
+  if (isUnsavedEmptyDraftConversation(currentConversation)) {
+    syncConversationPageById(currentConversation.id)
+    await applyConversation(currentConversation)
+    await waitForConversationApply()
+    if (shouldStartRename) {
+      startRename(currentConversation.id)
+    }
+    return currentConversation
+  }
   const conversation = createEmptyConversation()
-  conversationList.value = [conversation, ...conversationList.value]
+  conversationList.value = [...conversationList.value, conversation]
   syncConversationPageById(conversation.id)
   await applyConversation(conversation)
   await waitForConversationApply()
-  await persistConversations()
-  emitWorkshopHistoryChanged()
   if (isMobile.value) {
     mobilePane.value = 'chat'
     mobileSidebarOpen.value = false
@@ -2143,7 +2188,10 @@ async function switchConversation(id) {
   if (!id || id === currentConversationId.value || busy.value || editingConversationId.value) return
   const conversation = conversationList.value.find((item) => item.id === id)
   if (!conversation) return
-  await flushPendingPersist()
+  const discardedDraft = discardUnsavedEmptyDraftConversation(currentConversationId.value)
+  if (!discardedDraft) {
+    await flushPendingPersist()
+  }
   await applyConversation(conversation)
   if (isMobile.value) {
     mobilePane.value = 'chat'
@@ -2166,6 +2214,7 @@ async function confirmDeleteConversation() {
   pendingDeleteConversationId.value = ''
   if (!id || conversationList.value.length <= 1 || busy.value) return
   await flushPendingPersist()
+  const currentIndex = conversationList.value.findIndex((item) => item.id === id)
   try {
     await deleteWorkshopConversation(id)
   } catch (e) {
@@ -2173,8 +2222,13 @@ async function confirmDeleteConversation() {
   }
   const nextList = conversationList.value.filter((item) => item.id !== id)
   conversationList.value = nextList
-  if (currentConversationId.value === id && nextList[0]) {
-    await applyConversation(nextList[0])
+  const nextActiveConversation =
+    nextList[currentIndex] ||
+    nextList[currentIndex - 1] ||
+    nextList[0] ||
+    null
+  if (currentConversationId.value === id && nextActiveConversation) {
+    await applyConversation(nextActiveConversation)
   } else {
     clampConversationPage(conversationPage.value)
   }
@@ -2213,9 +2267,21 @@ function normalizeConversationComparable(conversation) {
   return JSON.stringify({
     id: String(conversation?.id || ''),
     title: String(conversation?.title || ''),
+    orderIndex: conversation?.orderIndex ?? null,
     createdAt: String(conversation?.createdAt || ''),
     messages: Array.isArray(conversation?.messages) ? conversation.messages : [],
     preview: conversation?.preview || {},
+  })
+}
+
+function hasConversationContentChanged(existingConversation, snapshot) {
+  if (!existingConversation) return true
+  return JSON.stringify({
+    messages: Array.isArray(existingConversation?.messages) ? existingConversation.messages : [],
+    preview: existingConversation?.preview || {},
+  }) !== JSON.stringify({
+    messages: Array.isArray(snapshot?.messages) ? snapshot.messages : [],
+    preview: snapshot?.preview || {},
   })
 }
 
@@ -3310,7 +3376,10 @@ watch(
     if (!nextId || !historyReady.value || nextId === currentConversationId.value) return
     const conversation = conversationList.value.find((item) => item.id === nextId)
     if (!conversation) return
-    await flushPendingPersist()
+    const discardedDraft = discardUnsavedEmptyDraftConversation(currentConversationId.value)
+    if (!discardedDraft) {
+      await flushPendingPersist()
+    }
     await applyConversation(conversation)
   },
 )

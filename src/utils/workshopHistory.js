@@ -32,6 +32,7 @@ export function createEmptyConversation(title = '新对话') {
   return {
     id: createConversationId(),
     title,
+    orderIndex: null,
     createdAt: now,
     updatedAt: now,
     messages: [],
