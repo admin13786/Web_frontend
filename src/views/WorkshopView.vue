@@ -1,12 +1,24 @@
 ﻿<template>
   <div
     class="workshop"
-    :class="theme === 'dark' ? 'workshop--dark' : 'workshop--light'"
+    :class="[
+      theme === 'dark' ? 'workshop--dark' : 'workshop--light',
+      {
+        'is-mobile': isMobile,
+        'mobile-sidebar-open': mobileSidebarOpen,
+      },
+    ]"
     ref="workshopEl"
   >
-    <aside v-if="false" class="history-sidebar" :class="{ expanded: sidebarExpanded }">
+    <aside
+      v-if="isMobile"
+      class="history-sidebar"
+      :class="{
+        'is-mobile-open': mobileSidebarOpen,
+      }"
+    >
       <div class="sidebar-top">
-        <button type="button" class="sidebar-icon-btn" :title="sidebarExpanded ? '收起侧栏' : '展开侧栏'" @click="toggleSidebar">
+        <button type="button" class="sidebar-icon-btn" title="收起侧栏" @click="toggleSidebar">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <line x1="4" y1="7" x2="20" y2="7" />
             <line x1="4" y1="12" x2="20" y2="12" />
@@ -22,7 +34,7 @@
         </button>
       </div>
 
-      <template v-if="sidebarExpanded">
+      <template>
         <div class="sidebar-brand">Workshop</div>
 
         <div class="sidebar-actions">
@@ -36,7 +48,7 @@
           </div>
         </div>
 
-        <div v-if="false" class="sidebar-section">
+        <div class="sidebar-section">
           <div class="sidebar-section-title">对话</div>
           <div class="sidebar-conversation-list">
             <div
@@ -124,12 +136,31 @@
       </template>
     </aside>
 
+    <div
+      v-if="isMobile && mobileSidebarOpen"
+      class="mobile-sidebar-mask"
+      @click="mobileSidebarOpen = false"
+    ></div>
+
     <div v-if="isWelcomeScreen" class="workspace-main">
       <div class="chat-panel chat-panel--welcome">
         <div class="welcome-screen">
           <div class="welcome-screen__panel">
             <div class="welcome-screen__meta">
               <div class="welcome-screen__title-row">
+                <button
+                  v-if="isMobile"
+                  type="button"
+                  class="icon-btn welcome-screen__menu-btn"
+                  title="打开对话侧栏"
+                  @click="toggleSidebar"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="4" y1="7" x2="20" y2="7" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="17" x2="20" y2="17" />
+                  </svg>
+                </button>
                 <div class="welcome-screen__title">{{ chatTitle }}</div>
               </div>
               <div class="welcome-screen__subtitle">当前用户 · {{ userDisplayName }}</div>
@@ -191,8 +222,30 @@
     </div>
 
     <div v-else class="workspace-main">
+    <div v-if="isMobile" class="mobile-pane-switch">
+      <button
+        type="button"
+        class="mobile-pane-switch__btn"
+        :class="{ active: mobilePane === 'chat' }"
+        @click="mobilePane = 'chat'"
+      >
+        对话
+      </button>
+      <button
+        type="button"
+        class="mobile-pane-switch__btn"
+        :class="{ active: mobilePane === 'result' }"
+        @click="mobilePane = 'result'"
+      >
+        结果
+      </button>
+    </div>
     <!-- Left: Chat Panel -->
-    <div class="chat-panel" :style="{ width: leftWidth + '%' }">
+    <div
+      v-show="!isMobile || mobilePane === 'chat'"
+      class="chat-panel"
+      :style="isMobile ? undefined : { width: leftWidth + '%' }"
+    >
       <div class="chat-header">
         <div class="chat-header-main">
           <div>
@@ -227,7 +280,11 @@
           </div>
         </div>
         <div class="header-actions">
-          <button v-if="false" class="icon-btn" :title="sidebarExpanded ? '收起历史侧栏' : '展开历史侧栏'" @click="toggleSidebar">
+          <button
+            class="icon-btn"
+            :title="isMobile ? '打开对话侧栏' : '历史侧栏仅在移动端显示'"
+            @click="toggleSidebar"
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="7" x2="20" y2="7" />
               <line x1="4" y1="12" x2="20" y2="12" />
@@ -261,7 +318,7 @@
           </div>
         </div>
         <div v-if="messages.length === 0 && !busy" class="empty-hint">
-          <p>鍙戦€佹秷鎭紑濮嬩笌 Agent 对话</p>
+          <p>发送消息开始与 Agent 对话</p>
         </div>
         <div v-for="(msg, i) in messages" :key="msg.key" class="message" :class="msg.role">
           <div class="msg-avatar">
@@ -404,10 +461,10 @@
     </div>
 
     <!-- Divider -->
-    <div class="divider" @mousedown="startDrag"></div>
+    <div v-if="!isMobile" class="divider" @mousedown="startDrag"></div>
 
     <!-- Right: Preview Panel -->
-    <div class="results-panel">
+    <div v-show="!isMobile || mobilePane === 'result'" class="results-panel">
       <div class="results-header">
         <span class="results-title">成果展示</span>
         <div class="header-actions">
@@ -421,8 +478,8 @@
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             </svg>
           </button>
-          <!-- [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
-          <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="鏌ョ湅娌欑姹犵姸鎬? @click="toggleSandboxPool">
+          <!-- [容器池功能暂时禁用]
+          <button class="icon-btn" :class="{ 'icon-btn--active': showSandboxPool }" title="查看沙箱池状态" @click="toggleSandboxPool">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="7" height="7" rx="1.5"/>
               <rect x="14" y="4" width="7" height="7" rx="1.5"/>
@@ -488,7 +545,7 @@
                   <polyline points="8 4 16 12 8 20"/>
                 </svg>
               </span>
-              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '馃搧' : fileIcon(node.path) }}</span>
+              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '📁' : fileIcon(node.path) }}</span>
               <span class="workspace-tree-label">{{ node.name }}</span>
             </button>
           </div>
@@ -542,7 +599,7 @@
           </div>
 
           <template v-else>
-        <!-- [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+        <!-- [容器池功能暂时禁用]
         <div v-if="showSandboxPool" class="sandbox-pool-panel">
           <div class="sandbox-pool-header">
             <div>
@@ -725,10 +782,11 @@ import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
-  // fetchAgentDoSandboxPool, // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+  // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
   fetchAgentDoWorkspaceFile,
   fetchAgentDoWorkspaceTree,
   normalizeWorkshopPreviewUrl,
+  restoreAgentDoSessionMapping,
   streamGenerate,
   streamPreviewWithAgentDo,
   uploadHTML,
@@ -751,9 +809,11 @@ const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
 const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '未登录')
-const sidebarExpanded = ref(false)
+const isMobile = ref(false)
+const mobilePane = ref('chat')
+const mobileSidebarOpen = ref(false)
 
-// 鈹€鈹€ Layout / drag 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Layout / drag
 const workshopEl = ref(null)
 const leftWidth = ref(40)
 let dragging = false
@@ -761,6 +821,7 @@ let startX = 0
 let startW = 0
 
 function startDrag(e) {
+  if (isMobile.value) return
   dragging = true
   startX = e.clientX
   startW = leftWidth.value
@@ -781,7 +842,18 @@ function stopDrag() {
   document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '')
 }
 
-// 鈹€鈹€ Chat state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+function syncViewportMode() {
+  if (typeof window === 'undefined') return
+  const mobile = window.innerWidth <= 768
+  isMobile.value = mobile
+  if (!mobile) {
+    mobileSidebarOpen.value = false
+    return
+  }
+  mobilePane.value = mobilePane.value === 'result' ? 'result' : 'chat'
+}
+
+// Chat state
 let messageKeySeq = 0
 function allocMessageKey() {
   messageKeySeq += 1
@@ -875,7 +947,7 @@ function createEmptyPreviewState() {
   }
 }
 
-// 鈹€鈹€ Right panel state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Right panel state
 const previewMode = ref('empty')
 const previewHtml = ref('')
 const previewUrl = ref('')
@@ -885,7 +957,7 @@ const codeCopied = ref(false)
 const urlLoadError = ref(false)
 const previewFrameState = ref('idle')
 const showAgentDoDebug = ref(false)
-// const showSandboxPool = ref(false) // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+// const showSandboxPool = ref(false) // [容器池功能暂时禁用]
 const showWorkspaceFiles = ref(false)
 const agentDoDebug = ref({
   requestPayload: null,
@@ -909,7 +981,7 @@ const agentDoLive = ref({
   reasoning: '',
   answer: '',
 })
-/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+/* [容器池功能暂时禁用]
 const sandboxPoolLoading = ref(false)
 const sandboxPoolError = ref('')
 const sandboxPool = ref({
@@ -1167,12 +1239,12 @@ function handleWorkspaceNodeClick(node) {
 async function toggleWorkspaceFiles() {
   showWorkspaceFiles.value = !showWorkspaceFiles.value
   if (!showWorkspaceFiles.value) return
-  // showSandboxPool.value = false // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+  // showSandboxPool.value = false // [容器池功能暂时禁用]
   showAgentDoDebug.value = false
   await loadWorkspaceTree()
 }
 
-// 鈹€鈹€ Smart auto-scroll 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Smart auto-scroll
 const userScrolledUp = ref(false)
 const newChunksWhileScrolledUp = ref(false)
 const SCROLL_THRESHOLD = 80
@@ -1203,7 +1275,7 @@ function forceScrollBottom() {
   })
 }
 
-// 鈹€鈹€ Elapsed timer 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Elapsed timer
 const streamStartTime = ref(0)
 const elapsedSeconds = ref(0)
 let elapsedTimer = null
@@ -1232,7 +1304,7 @@ const formattedElapsed = computed(() => {
   return r ? `${m}m ${r}s` : `${m}m`
 })
 
-// 鈹€鈹€ Overall progress tracking 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Overall progress tracking
 const completedStepsCount = computed(() => {
   const steps = agentDoLive.value.steps.filter(s => s.stage === 'result').length
   const completedTools = agentDoDebug.value.toolLogs.filter(t => t.status === 'completed').length
@@ -1798,7 +1870,7 @@ function buildAgentDoTraceSnapshot() {
   }))
 }
 
-/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+/* [容器池功能暂时禁用]
 async function loadSandboxPool() {
   sandboxPoolLoading.value = true
   sandboxPoolError.value = ''
@@ -1824,13 +1896,16 @@ async function toggleSandboxPool() {
 function toggleAgentDoDebug() {
   showAgentDoDebug.value = !showAgentDoDebug.value
   if (showAgentDoDebug.value) {
-    // showSandboxPool.value = false // [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+    // showSandboxPool.value = false // [容器池功能暂时禁用]
     showWorkspaceFiles.value = false
   }
 }
 
 function buildConversationSnapshot() {
   const current = conversationList.value.find((item) => item.id === currentConversationId.value)
+  const currentPreview = current?.preview || {}
+  const agentDoSessionId = agentDoDebug.value.sessionId || currentPreview.agentDoSessionId || ''
+  const workspacePath = agentDoDebug.value.workspacePath || currentPreview.workspacePath || ''
   return {
     id: currentConversationId.value,
     title: chatTitle.value || '新对话',
@@ -1842,6 +1917,8 @@ function buildConversationSnapshot() {
       html: previewHtml.value,
       url: previewUrl.value,
       code: { ...previewCode.value },
+      agentDoSessionId,
+      workspacePath,
     },
   }
 }
@@ -1895,7 +1972,49 @@ function emitWorkshopHistoryChanged() {
   window.dispatchEvent(new CustomEvent('workshop-history-changed'))
 }
 
-function applyConversation(conversation) {
+function getConversationPreviewRecovery(conversation) {
+  const preview = conversation?.preview || {}
+  const directSessionId = String(preview.agentDoSessionId || '').trim()
+  const directWorkspacePath = String(preview.workspacePath || '').trim()
+  const previewUrlText = String(preview.url || '').trim()
+  if (directSessionId) {
+    return {
+      agentDoSessionId: directSessionId,
+      workspacePath: directWorkspacePath,
+    }
+  }
+  if (!previewUrlText) return null
+  try {
+    const parsed = new URL(previewUrlText, window.location.origin)
+    const agentDoSessionId = String(parsed.searchParams.get('agentDoSessionId') || '').trim()
+    if (!agentDoSessionId) return null
+    return {
+      agentDoSessionId,
+      workspacePath: String(parsed.searchParams.get('workspacePath') || directWorkspacePath || '').trim(),
+    }
+  } catch {
+    return null
+  }
+}
+
+async function restoreConversationSessionMapping(conversation) {
+  const username = currentUser.value?.username || 'workshop_guest'
+  const recovery = getConversationPreviewRecovery(conversation)
+  if (!conversation?.id || !recovery?.agentDoSessionId) return null
+  try {
+    return await restoreAgentDoSessionMapping({
+      username,
+      conversationId: conversation.id,
+      agentDoSessionId: recovery.agentDoSessionId,
+      workspacePath: recovery.workspacePath || '',
+    })
+  } catch (error) {
+    console.warn('restore Agent-Do session mapping failed:', error)
+    return null
+  }
+}
+
+async function applyConversation(conversation) {
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
@@ -1907,6 +2026,8 @@ function applyConversation(conversation) {
   syncConversationRoute(conversation.id)
   chatTitle.value = conversation.title || '新对话'
   messages.value = cloneMessages(conversation.messages || [])
+  const restoredMapping = await restoreConversationSessionMapping(conversation)
+  const restoredWorkspacePath = restoredMapping?.workspacePath || conversation.preview?.workspacePath || ''
   previewMode.value = conversation.preview?.mode || 'empty'
   previewHtml.value = conversation.preview?.html || ''
   previewUrl.value = normalizeWorkshopPreviewUrl(conversation.preview?.url || '')
@@ -1918,6 +2039,9 @@ function applyConversation(conversation) {
   streamingFriendly.value = ''
   streamingHtml.value = ''
   resetAgentDoDebug()
+  agentDoDebug.value.sessionId = restoredMapping?.agentDoSessionId || conversation.preview?.agentDoSessionId || ''
+  agentDoDebug.value.workspacePath = restoredWorkspacePath
+  agentDoDebug.value.previewUrl = previewUrl.value
   resetWorkspaceBrowser()
   urlLoadError.value = false
   nextTick(() => {
@@ -1996,11 +2120,14 @@ async function createNewConversation(options = {}) {
   const conversation = createEmptyConversation()
   conversationList.value = [conversation, ...conversationList.value]
   syncConversationPageById(conversation.id)
-  applyConversation(conversation)
+  await applyConversation(conversation)
   await waitForConversationApply()
   await persistConversations()
   emitWorkshopHistoryChanged()
-  sidebarExpanded.value = true
+  if (isMobile.value) {
+    mobilePane.value = 'chat'
+    mobileSidebarOpen.value = false
+  }
   if (shouldStartRename) {
     startRename(conversation.id)
   }
@@ -2017,7 +2144,11 @@ async function switchConversation(id) {
   const conversation = conversationList.value.find((item) => item.id === id)
   if (!conversation) return
   await flushPendingPersist()
-  applyConversation(conversation)
+  await applyConversation(conversation)
+  if (isMobile.value) {
+    mobilePane.value = 'chat'
+    mobileSidebarOpen.value = false
+  }
 }
 
 function onDeleteConversationModalCancel() {
@@ -2043,7 +2174,7 @@ async function confirmDeleteConversation() {
   const nextList = conversationList.value.filter((item) => item.id !== id)
   conversationList.value = nextList
   if (currentConversationId.value === id && nextList[0]) {
-    applyConversation(nextList[0])
+    await applyConversation(nextList[0])
   } else {
     clampConversationPage(conversationPage.value)
   }
@@ -2063,14 +2194,14 @@ async function loadWorkshopHistory() {
     current = createEmptyConversation()
     conversationList.value = [current]
     historyReady.value = true
-    applyConversation(current)
+    await applyConversation(current)
     await waitForConversationApply()
     await persistConversations()
     emitWorkshopHistoryChanged()
     return
   }
   syncConversationPageById(current.id)
-  applyConversation(current)
+  await applyConversation(current)
   historyReady.value = true
   emitWorkshopHistoryChanged()
   if (routeRequestsNewConversation()) {
@@ -2101,7 +2232,8 @@ async function logout() {
 }
 
 function toggleSidebar() {
-  sidebarExpanded.value = !sidebarExpanded.value
+  if (!isMobile.value) return
+  mobileSidebarOpen.value = !mobileSidebarOpen.value
 }
 
 function conversationInputId(id) {
@@ -2124,7 +2256,6 @@ function startRename(id) {
   if (!conversation) return
   editingConversationId.value = id
   editingTitle.value = conversation.title || '新对话'
-  sidebarExpanded.value = true
   focusRenameInput(id)
 }
 
@@ -2183,7 +2314,7 @@ function formatConversationTime(raw) {
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+/* [容器池功能暂时禁用]
 function formatPoolTime(raw) {
   if (!raw) return '-'
   const date = new Date(raw)
@@ -2200,16 +2331,16 @@ function formatPoolTime(raw) {
 function formatIdleTtl(ms) {
   const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000))
   if (!totalSeconds) return '-'
-  if (totalSeconds < 60) return `${totalSeconds} 绉抈
+  if (totalSeconds < 60) return `${totalSeconds} 秒`
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  return seconds ? `${minutes} 鍒?${seconds} 绉抈 : `${minutes} 鍒嗛挓`
+  return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`
 }
 
 function formatReclaimReason(reason) {
   const map = {
-    'idle-timeout': '绌洪棽瓒呮椂鍥炴敹',
-    'pool-limit': '瓒呰繃瀹瑰櫒姹犱笂闄?,
+    'idle-timeout': '空闲超时回收',
+    'pool-limit': '超过容器池上限',
   }
   return map[reason] || reason || '-'
 }
@@ -2292,7 +2423,7 @@ function toggleAllAccordionItems() {
   }
 }
 
-/** 鍙充晶浠呭湪鏁存 HTML 鐢熸垚缁撴潫锛堝強涓婁紶缁撴潫锛夊悗棣栨灞曠ず锛屾祦寮忚繃绋嬩腑涓嶆洿鏂?iframe */
+/** 右侧仅在整段 HTML 生成结束后首次展示，流式过程中不频繁刷新 iframe。 */
 function flushPreviewImmediate(html) {
   previewHtml.value = html
   previewMode.value = 'html'
@@ -2343,7 +2474,7 @@ function copyHtmlSegment(text, id) {
   })
 }
 
-// 鈹€鈹€ Textarea auto-resize 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Textarea auto-resize
 function autoResize() {
   const el = textareaEl.value
   if (!el) return
@@ -2674,7 +2805,7 @@ function applyAgentDoStreamEvent(event) {
   return null
 }
 
-// 鈹€鈹€ HTML 杈撳嚭鍏滃簳娓呮礂锛氶伩鍏嶈鏄庢枃瀛?浠ｇ爜鍥存爮娣峰叆閮ㄧ讲鏂囦欢 鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// HTML 输出兜底清洗：避免说明文字或 Markdown 代码围栏混入部署文件
 function normalizeGeneratedHtml(raw) {
   if (!raw) return ''
   let s = raw
@@ -2682,11 +2813,11 @@ function normalizeGeneratedHtml(raw) {
     .replace(/\r\n/g, '\n')
     .trim()
 
-  // 鍏煎妯″瀷璇緭鍑?markdown 鍥存爮
+  // 兼容模型误输出的 Markdown 围栏
   s = s.replace(/^```(?:html)?\s*/i, '')
   s = s.replace(/\s*```$/i, '')
 
-  // 浼樺厛浠?doctype 璧锋埅鍙栵紱鍚﹀垯浠?<html 璧锋埅鍙?
+  // 优先从 doctype 截取，否则从 <html 开始截取
   const lower = s.toLowerCase()
   const docIdx = lower.indexOf('<!doctype html')
   const htmlIdx = lower.indexOf('<html')
@@ -2695,7 +2826,7 @@ function normalizeGeneratedHtml(raw) {
   else if (htmlIdx !== -1) start = htmlIdx
   if (start > 0) s = s.slice(start)
 
-  // 鑻ュ瓨鍦?</html>锛屾埅鏂叾鍚庣殑鍣０鏂囨湰
+  // 若存在 </html>，截断其后的噪声文本
   const endHtml = s.toLowerCase().lastIndexOf('</html>')
   if (endHtml !== -1) {
     s = s.slice(0, endHtml + '</html>'.length)
@@ -2704,7 +2835,7 @@ function normalizeGeneratedHtml(raw) {
   return s.trim()
 }
 
-// 寮哄埗璁╂ā鍨嬬敓鎴愮殑鍗曟枃浠堕〉闈⑩€滈摵婊♀€濆綋鍓嶉瑙?iframe锛岄伩鍏嶅嚭鐜板乏鍙冲ぇ鐗囩暀鐧芥垨鍙充晶鍥哄畾瀹藉害瀵艰嚧鐨勨€滈暱搴︿笉鍖归厤鈥濄€?
+// 强制让生成的单文件页面铺满当前预览 iframe，避免左右留白或高度不匹配
 function enforceWorkshopPreviewFit(html) {
   if (!html) return html
   const fitCss = `
@@ -2730,14 +2861,14 @@ html, body {
 }
 `
 
-  // 浼樺厛鎻掑叆鍒?</head> 鍓嶏紝淇濊瘉鏇撮珮浼樺厛绾т笖涓嶄緷璧栨ā鍨嬬粨鏋?
+  // 优先插入到 </head> 前，保证更高优先级且不依赖模型结构
   if (html.includes('</head>')) {
     return html.replace('</head>', `<style>${fitCss}</style></head>`)
   }
   return `${html}<style>${fitCss}</style>`
 }
 
-// 鈹€鈹€ Send message 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Send message
 async function sendLegacyMessage(options = {}) {
   const text = (options.textOverride ?? inputText.value).trim()
   if (!text || busy.value) return
@@ -3113,6 +3244,8 @@ function shouldForkFailedSingleHtmlConversation() {
 onMounted(async () => {
   if (typeof window !== 'undefined') {
     window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+    window.addEventListener('resize', syncViewportMode)
+    syncViewportMode()
   }
   try {
     await loadWorkshopHistory()
@@ -3120,7 +3253,7 @@ onMounted(async () => {
     const fallback = createEmptyConversation()
     conversationList.value = [fallback]
     historyReady.value = true
-    applyConversation(fallback)
+    await applyConversation(fallback)
   }
 })
 
@@ -3146,6 +3279,10 @@ watch(
   () => currentConversationId.value,
   async () => {
     resetWorkspaceBrowser()
+    const conversation = conversationList.value.find((item) => item.id === currentConversationId.value)
+    if (conversation) {
+      await restoreConversationSessionMapping(conversation)
+    }
     if (showWorkspaceFiles.value && currentWorkspaceRequest.value.ready) {
       await loadWorkspaceTree(true)
     }
@@ -3174,13 +3311,14 @@ watch(
     const conversation = conversationList.value.find((item) => item.id === nextId)
     if (!conversation) return
     await flushPendingPersist()
-    applyConversation(conversation)
+    await applyConversation(conversation)
   },
 )
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+    window.removeEventListener('resize', syncViewportMode)
   }
   stopDrag()
   stopElapsedTimer()
@@ -3507,6 +3645,19 @@ watch(
   color: var(--text-primary);
 }
 
+.mobile-sidebar-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(3, 6, 18, 0.58);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.mobile-pane-switch {
+  display: none;
+}
+
 .sidebar-conversation-empty {
   padding: 16px 12px;
   border-radius: 14px;
@@ -3610,6 +3761,10 @@ watch(
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.welcome-screen__menu-btn {
+  flex-shrink: 0;
 }
 
 .welcome-screen__title {
@@ -4449,7 +4604,7 @@ watch(
   margin-bottom: 8px;
 }
 
-/* 娴佸紡 HTML锛氬姞瀹姐€佸帇浣庨珮搴︼紙绾︿竴灞忓唴鐭潯预览锛夛紝涓庡浘涓孩妗嗘瘮渚嬫帴杩?*/
+/* 流式 HTML：加宽并压低高度，控制在一屏内的短条预览 */
 .stream-code-shell {
   width: 100%;
   max-width: 100%;
@@ -4516,7 +4671,7 @@ watch(
   word-break: break-word;
 }
 
-/* 鐢熸垚缁撴潫鍚庝粛灞曠ず婧愮爜锛氫笌娴佸紡鍖哄悓瀹斤紝鍚屾牱鍘嬩綆楂樺害 */
+/* 生成结束后继续展示源码，尺寸与流式区域保持一致 */
 .agent-html-source {
   width: 100%;
   max-width: 100%;
@@ -4971,7 +5126,7 @@ watch(
   padding: 16px;
 }
 
-/* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+/* [容器池功能暂时禁用]
 .sandbox-pool-panel {
   flex: 1;
   min-height: 0;
@@ -5392,7 +5547,7 @@ watch(
   }
 }
 
-/* 鈹€鈹€ Stream status bar (sticky top) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* Stream status bar (sticky top) */
 .stream-status-bar {
   position: sticky;
   top: 0;
@@ -5484,7 +5639,7 @@ watch(
   letter-spacing: 0.03em;
 }
 
-/* 鈹€鈹€ Scroll to bottom button 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* Scroll to bottom button */
 .scroll-to-bottom-btn {
   position: absolute;
   bottom: 80px;
@@ -5533,7 +5688,7 @@ watch(
   transform: translateX(-50%) translateY(12px);
 }
 
-/* 鈹€鈹€ Agent-Do timer in header 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* Agent-Do timer in header */
 .agentDo-live-timer {
   display: flex;
   align-items: center;
@@ -5555,7 +5710,7 @@ watch(
   opacity: 0.7;
 }
 
-/* 鈹€鈹€ Agent-Do progress bar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* Agent-Do progress bar */
 .agentDo-progress-bar {
   margin: 0 0 14px;
   padding: 10px 12px;
@@ -5651,26 +5806,85 @@ watch(
 @media (max-width: 768px) {
   .workshop {
     min-height: 0;
-    height: calc(100vh - 24px);
+    height: 100dvh;
     border-radius: 0;
+    position: relative;
   }
 
   .workspace-main {
+    flex-direction: column;
     min-height: 0;
   }
 
   .history-sidebar {
-    width: 64px;
-    padding: 12px 10px 14px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(84vw, 320px);
+    padding: 14px 14px 18px;
+    transform: translateX(-100%);
+    box-shadow: 0 18px 42px rgba(0,0,0,0.42);
+    z-index: 60;
   }
 
+  .history-sidebar.is-mobile-open,
   .history-sidebar.expanded {
-    width: 240px;
-    padding: 12px 14px 14px;
+    width: min(84vw, 320px);
+    padding: 14px 14px 18px;
+    transform: translateX(0);
+  }
+
+  .sidebar-top {
+    flex-direction: row;
+    justify-content: space-between;
   }
 
   .sidebar-brand {
     font-size: 1.55rem;
+  }
+
+  .mobile-pane-switch {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--workshop-border);
+    background: var(--workshop-panel-strong-bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .mobile-pane-switch__btn {
+    flex: 1;
+    border: 1px solid var(--workshop-border);
+    background: var(--workshop-panel-bg);
+    color: var(--text-secondary);
+    border-radius: 11px;
+    padding: 10px 12px;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+
+  .mobile-pane-switch__btn.active {
+    background: rgba(99,102,241,0.18);
+    border-color: rgba(99,102,241,0.34);
+    color: var(--text-primary);
+  }
+
+  .chat-panel,
+  .results-panel {
+    width: 100% !important;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .divider {
+    display: none;
   }
 
   .agentDo-live-header,
@@ -5730,6 +5944,17 @@ watch(
     align-items: center;
   }
 
+  .results-content {
+    flex-direction: column;
+  }
+
+  .workspace-browser {
+    width: 100%;
+    max-height: 42vh;
+    border-right: none;
+    border-bottom: 1px solid var(--workshop-border);
+  }
+
   .mode-switch--welcome {
     flex: 1;
   }
@@ -5761,7 +5986,7 @@ watch(
     padding-inline: 10px;
   }
 
-  /* [瀹瑰櫒姹犲姛鑳芥殏鏃剁鐢╙
+  /* [容器池功能暂时禁用]
   .sandbox-pool-grid {
     grid-template-columns: 1fr;
   }

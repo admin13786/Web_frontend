@@ -246,6 +246,35 @@ export async function* streamPreviewWithAgentDo(payload) {
   }
 }
 
+export async function restoreAgentDoSessionMapping(payload) {
+  const response = await fetch(`${API_BASE}/agent-do/session-mapping/restore`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      username: payload.username,
+      conversation_id: payload.conversationId,
+      agentdo_session_id: payload.agentDoSessionId,
+      workspace_path: payload.workspacePath || '',
+    }),
+  })
+
+  let data = null
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
+  }
+
+  return data
+}
+
 /* [容器池功能暂时禁用]
 export async function fetchAgentDoSandboxPool() {
   const response = await fetch(`${API_BASE}/agent-do/sandbox-pool`, {
