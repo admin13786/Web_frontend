@@ -132,6 +132,7 @@ import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/a
 import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
+const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 
 defineProps({
   isMobileOpen: {
@@ -273,6 +274,12 @@ async function confirmRemoveConversation() {
     await deleteWorkshopConversation(conversationId)
     conversations.value = nextConversations
     clampPage()
+    window.dispatchEvent(new CustomEvent(WORKSHOP_CONVERSATION_DELETED_EVENT, {
+      detail: {
+        conversationId,
+        nextActiveId,
+      },
+    }))
     emitWorkshopHistoryChanged()
 
     if (activeConversationId.value === conversationId && nextActiveId) {

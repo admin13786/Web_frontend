@@ -805,6 +805,8 @@ import { createEmptyConversation } from '../utils/workshopHistory.js'
 
 const router = useRouter()
 const route = useRoute()
+const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
+const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
@@ -864,7 +866,6 @@ const messages = ref([])
 const inputText = ref('')
 const isWelcomeScreen = computed(() => messages.value.length === 0 && !busy.value && !loading.value)
 const WORKSHOP_MODE_STORAGE_KEY = 'workshop:generation-mode'
-const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const generationMode = ref(loadGenerationMode())
 /** SSE：给用户看的说明（Markdown） */
 const streamingFriendly = ref('')
@@ -889,6 +890,7 @@ let historyHydrating = false
 let persistTimer = null
 const historyReady = ref(false)
 let persistInFlight = null
+const deletedConversationIds = new Set()
 const CONVERSATIONS_PER_PAGE = 5
 
 const totalConversationPages = computed(() => {
@@ -1973,6 +1975,32 @@ function emitWorkshopHistoryChanged() {
   window.dispatchEvent(new CustomEvent('workshop-history-changed'))
 }
 
+async function removeDeletedConversationLocally(conversationId, nextActiveId = '') {
+  const deletedId = String(conversationId || '').trim()
+  if (!deletedId) return
+  deletedConversationIds.add(deletedId)
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  const nextList = conversationList.value.filter((item) => item.id !== deletedId)
+  conversationList.value = nextList
+  const nextConversation =
+    nextList.find((item) => item.id === nextActiveId) ||
+    nextList[0] ||
+    null
+  if (currentConversationId.value !== deletedId) {
+    clampConversationPage(conversationPage.value)
+    return
+  }
+  if (!nextConversation) {
+    currentConversationId.value = ''
+    clampConversationPage(conversationPage.value)
+    return
+  }
+  await applyConversation(nextConversation)
+}
+
 function getConversationPreviewRecovery(conversation) {
   const preview = conversation?.preview || {}
   const directSessionId = String(preview.agentDoSessionId || '').trim()
@@ -2088,8 +2116,14 @@ async function persistConversations() {
   if (persistInFlight) return persistInFlight
   persistInFlight = (async () => {
     const snapshot = buildConversationSnapshot()
+    if (deletedConversationIds.has(snapshot.id)) {
+      return snapshot
+    }
     const nextList = [...conversationList.value]
     const index = nextList.findIndex((item) => item.id === snapshot.id)
+    if (index < 0) {
+      return snapshot
+    }
     const existingConversation = index >= 0 ? nextList[index] : null
     const shouldPersist = hasMeaningfulConversationContent(snapshot) || existingConversation?.orderIndex != null
     const contentChanged = hasConversationContentChanged(existingConversation, snapshot)
@@ -2118,6 +2152,9 @@ async function persistConversations() {
     }
     conversationList.value = nextList
     const saved = await saveWorkshopConversation(snapshot)
+    if (deletedConversationIds.has(saved.id)) {
+      return saved
+    }
     const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
     if (savedIndex >= 0) {
       const merged = [...conversationList.value]
@@ -2184,6 +2221,12 @@ async function handleExternalCreateConversation() {
   await createNewConversation({ startRename: false })
 }
 
+async function handleExternalConversationDeleted(event) {
+  const conversationId = String(event?.detail?.conversationId || '').trim()
+  const nextActiveId = String(event?.detail?.nextActiveId || '').trim()
+  await removeDeletedConversationLocally(conversationId, nextActiveId)
+}
+
 async function switchConversation(id) {
   if (!id || id === currentConversationId.value || busy.value || editingConversationId.value) return
   const conversation = conversationList.value.find((item) => item.id === id)
@@ -2215,24 +2258,20 @@ async function confirmDeleteConversation() {
   if (!id || conversationList.value.length <= 1 || busy.value) return
   await flushPendingPersist()
   const currentIndex = conversationList.value.findIndex((item) => item.id === id)
-  try {
-    await deleteWorkshopConversation(id)
-  } catch (e) {
-    console.error('delete conversation failed:', e)
-  }
   const nextList = conversationList.value.filter((item) => item.id !== id)
-  conversationList.value = nextList
   const nextActiveConversation =
     nextList[currentIndex] ||
     nextList[currentIndex - 1] ||
     nextList[0] ||
     null
-  if (currentConversationId.value === id && nextActiveConversation) {
-    await applyConversation(nextActiveConversation)
-  } else {
-    clampConversationPage(conversationPage.value)
+  try {
+    await deleteWorkshopConversation(id)
+    await removeDeletedConversationLocally(id, nextActiveConversation?.id || '')
+    emitWorkshopHistoryChanged()
+  } catch (e) {
+    console.error('delete conversation failed:', e)
+    return
   }
-  emitWorkshopHistoryChanged()
 }
 
 async function loadWorkshopHistory() {
@@ -3310,6 +3349,7 @@ function shouldForkFailedSingleHtmlConversation() {
 onMounted(async () => {
   if (typeof window !== 'undefined') {
     window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+    window.addEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
     window.addEventListener('resize', syncViewportMode)
     syncViewportMode()
   }
@@ -3387,6 +3427,7 @@ watch(
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
+    window.removeEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
     window.removeEventListener('resize', syncViewportMode)
   }
   stopDrag()
