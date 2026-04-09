@@ -65,3 +65,27 @@ export function saveWorkshopState(username, state) {
   }
   writeStore(store)
 }
+
+export function removeWorkshopConversationState(username, conversationId, nextConversationId = '') {
+  const normalizedUsername = String(username || '').trim()
+  const normalizedConversationId = String(conversationId || '').trim()
+  if (!normalizedUsername || !normalizedConversationId) return
+
+  const store = readStore()
+  const userState = store[normalizedUsername]
+  if (!userState) return
+
+  const conversations = Array.isArray(userState.conversations)
+    ? userState.conversations.filter((item) => String(item?.id || '').trim() !== normalizedConversationId)
+    : []
+  const currentConversationId = String(userState.currentConversationId || '').trim()
+
+  store[normalizedUsername] = {
+    conversations,
+    currentConversationId:
+      currentConversationId === normalizedConversationId
+        ? String(nextConversationId || conversations[0]?.id || '')
+        : currentConversationId,
+  }
+  writeStore(store)
+}

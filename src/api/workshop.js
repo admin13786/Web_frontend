@@ -275,6 +275,31 @@ export async function restoreAgentDoSessionMapping(payload) {
   return data
 }
 
+export async function deleteAgentDoSessionMapping({ username, conversationId }) {
+  const response = await fetch(
+    `${API_BASE}/agent-do/session-mapping/${encodeURIComponent(username)}/${encodeURIComponent(conversationId)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+  )
+
+  let data = null
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
+  }
+
+  return data
+}
+
 /* [容器池功能暂时禁用]
 export async function fetchAgentDoSandboxPool() {
   const response = await fetch(`${API_BASE}/agent-do/sandbox-pool`, {

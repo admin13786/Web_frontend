@@ -792,7 +792,7 @@ import {
   uploadHTML,
 } from '../api/workshop.js'
 import {
-  deleteWorkshopConversation,
+  deleteWorkshopConversationDeep,
   fetchWorkshopConversations,
   saveWorkshopConversation,
 } from '../api/workshopConversations.js'
@@ -801,7 +801,7 @@ import MarkdownView from '../components/MarkdownView.vue'
 import DeleteConversationConfirmModal from '../components/DeleteConversationConfirmModal.vue'
 import { useTheme } from '../composables/useTheme'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
-import { createEmptyConversation } from '../utils/workshopHistory.js'
+import { createEmptyConversation, removeWorkshopConversationState } from '../utils/workshopHistory.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -2264,11 +2264,21 @@ async function confirmDeleteConversation() {
     nextList[currentIndex - 1] ||
     nextList[0] ||
     null
+  deletedConversationIds.add(id)
   try {
-    await deleteWorkshopConversation(id)
+    await deleteWorkshopConversationDeep({
+      username: currentUser.value?.username || 'workshop_guest',
+      conversationId: id,
+    })
+    removeWorkshopConversationState(
+      currentUser.value?.username || 'workshop_guest',
+      id,
+      nextActiveConversation?.id || '',
+    )
     await removeDeletedConversationLocally(id, nextActiveConversation?.id || '')
     emitWorkshopHistoryChanged()
   } catch (e) {
+    deletedConversationIds.delete(id)
     console.error('delete conversation failed:', e)
     return
   }

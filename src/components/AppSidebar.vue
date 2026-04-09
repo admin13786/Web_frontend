@@ -125,10 +125,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
-  deleteWorkshopConversation,
+  deleteWorkshopConversationDeep,
   fetchWorkshopConversations,
 } from '../api/workshopConversations.js'
 import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
+import { removeWorkshopConversationState } from '../utils/workshopHistory.js'
 import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
@@ -271,7 +272,11 @@ async function confirmRemoveConversation() {
     ''
 
   try {
-    await deleteWorkshopConversation(conversationId)
+    await deleteWorkshopConversationDeep({
+      username: currentUser?.username || 'workshop_guest',
+      conversationId,
+    })
+    removeWorkshopConversationState(currentUser?.username || 'workshop_guest', conversationId, nextActiveId)
     conversations.value = nextConversations
     clampPage()
     window.dispatchEvent(new CustomEvent(WORKSHOP_CONVERSATION_DELETED_EVENT, {
