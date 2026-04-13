@@ -3687,6 +3687,27 @@ watch(
   --welcome-send-bg: rgba(99, 102, 241, 0.14);
   --welcome-send-bg-hover: rgba(99, 102, 241, 0.24);
   --welcome-send-color: #3730a3;
+  --preview-surface-color: rgba(30, 41, 59, 0.82);
+  --preview-surface-bg:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.82), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(241, 245, 249, 0.92));
+  --preview-surface-border: rgba(148, 163, 184, 0.18);
+  --preview-surface-grid: rgba(148, 163, 184, 0.16);
+  --preview-surface-orb-color: rgba(51, 65, 85, 0.88);
+  --preview-surface-orb-bg: rgba(255, 255, 255, 0.54);
+  --preview-surface-ring: rgba(99, 102, 241, 0.26);
+  --preview-surface-title: #0f172a;
+  --preview-surface-text: rgba(71, 85, 105, 0.82);
+  --preview-surface-tip-text: rgba(71, 85, 105, 0.84);
+  --preview-surface-tip-bg: rgba(255, 255, 255, 0.64);
+  --preview-surface-tip-border: rgba(148, 163, 184, 0.2);
+  --preview-strip-bg: rgba(255, 255, 255, 0.54);
+  --preview-strip-border: rgba(148, 163, 184, 0.18);
+  --preview-strip-title: #0f172a;
+  --preview-strip-text: rgba(71, 85, 105, 0.82);
+  --preview-strip-chip-bg: rgba(255, 255, 255, 0.66);
+  --preview-strip-chip-border: rgba(148, 163, 184, 0.2);
+  --preview-strip-chip-text: rgba(51, 65, 85, 0.86);
   display: flex;
   height: calc(100vh - 48px);
   overflow: hidden;
@@ -3740,6 +3761,27 @@ watch(
   --welcome-send-bg: rgba(255, 255, 255, 0.16);
   --welcome-send-bg-hover: rgba(255, 255, 255, 0.26);
   --welcome-send-color: #ffffff;
+  --preview-surface-color: rgba(255, 255, 255, 0.75);
+  --preview-surface-bg:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  --preview-surface-border: rgba(255, 255, 255, 0.08);
+  --preview-surface-grid: rgba(255, 255, 255, 0.09);
+  --preview-surface-orb-color: rgba(255, 255, 255, 0.82);
+  --preview-surface-orb-bg: rgba(255, 255, 255, 0.04);
+  --preview-surface-ring: rgba(129, 140, 248, 0.3);
+  --preview-surface-title: rgba(255, 255, 255, 0.96);
+  --preview-surface-text: rgba(255, 255, 255, 0.62);
+  --preview-surface-tip-text: #d1d5db;
+  --preview-surface-tip-bg: rgba(255, 255, 255, 0.04);
+  --preview-surface-tip-border: rgba(255, 255, 255, 0.08);
+  --preview-strip-bg: rgba(255, 255, 255, 0.03);
+  --preview-strip-border: rgba(255, 255, 255, 0.08);
+  --preview-strip-title: rgba(255, 255, 255, 0.94);
+  --preview-strip-text: rgba(255, 255, 255, 0.56);
+  --preview-strip-chip-bg: transparent;
+  --preview-strip-chip-border: rgba(255, 255, 255, 0.08);
+  --preview-strip-chip-text: rgba(255, 255, 255, 0.8);
 }
 
 .history-sidebar {
@@ -5614,11 +5656,9 @@ watch(
   padding: 28px 26px;
   border-radius: 28px;
   text-align: center;
-  color: rgba(255,255,255,0.75);
-  background:
-    radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 45%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--preview-surface-color);
+  background: var(--preview-surface-bg);
+  border: 1px solid var(--preview-surface-border);
   position: relative;
   overflow: hidden;
 }
@@ -5627,7 +5667,7 @@ watch(
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px);
+  background-image: radial-gradient(var(--preview-surface-grid) 1px, transparent 1px);
   background-size: 18px 18px;
   opacity: 0.22;
   pointer-events: none;
@@ -5641,8 +5681,8 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.82);
-  background: rgba(255,255,255,0.04);
+  color: var(--preview-surface-orb-color);
+  background: var(--preview-surface-orb-bg);
   position: relative;
 }
 
@@ -5650,13 +5690,13 @@ watch(
   position: absolute;
   inset: 10px;
   border-radius: 22px;
-  border: 1px solid rgba(129,140,248,0.3);
+  border: 1px solid var(--preview-surface-ring);
 }
 
 .preview-waiting-title {
   font-size: 1.08rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.96);
+  color: var(--preview-surface-title);
 }
 
 .preview-waiting-text {
@@ -5664,7 +5704,7 @@ watch(
   max-width: 420px;
   line-height: 1.65;
   font-size: 0.9rem;
-  color: rgba(255,255,255,0.62);
+  color: var(--preview-surface-text);
 }
 
 .preview-waiting-tips {
@@ -5679,9 +5719,9 @@ watch(
   padding: 7px 12px;
   border-radius: 999px;
   font-size: 0.76rem;
-  color: #d1d5db;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.04);
+  color: var(--preview-surface-tip-text);
+  border: 1px solid var(--preview-surface-tip-border);
+  background: var(--preview-surface-tip-bg);
 }
 
 .preview-iframe {
@@ -5706,8 +5746,8 @@ watch(
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: rgba(255,255,255,0.03);
-  border-bottom: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
+  background: var(--preview-strip-bg);
+  border-bottom: 1px solid var(--preview-strip-border);
   flex-shrink: 0;
 }
 .code-lang-tag { font-size: 0.78rem; color: var(--text-secondary, #888); font-family: monospace; }
@@ -5739,8 +5779,8 @@ watch(
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--preview-strip-border);
+  background: var(--preview-strip-bg);
 }
 
 .preview-status-main {
@@ -5755,19 +5795,19 @@ watch(
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: rgba(255,255,255,0.35);
+  background: color-mix(in srgb, var(--preview-strip-text) 55%, transparent);
 }
 
 .preview-status-title {
   font-size: 0.84rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.94);
+  color: var(--preview-strip-title);
 }
 
 .preview-status-subtitle {
   margin-top: 3px;
   font-size: 0.75rem;
-  color: rgba(255,255,255,0.56);
+  color: var(--preview-strip-text);
 }
 
 .preview-status-chip {
@@ -5775,8 +5815,9 @@ watch(
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 0.74rem;
-  border: 1px solid rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.8);
+  border: 1px solid var(--preview-strip-chip-border);
+  background: var(--preview-strip-chip-bg);
+  color: var(--preview-strip-chip-text);
 }
 
 .preview-status-bar.status-waiting .preview-status-dot,
@@ -5800,10 +5841,10 @@ watch(
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: rgba(255,255,255,0.03);
-  border-bottom: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
+  background: var(--preview-strip-bg);
+  border-bottom: 1px solid var(--preview-strip-border);
   flex-shrink: 0;
-  color: var(--text-secondary, #888);
+  color: var(--preview-strip-text);
   font-size: 0.82rem;
 }
 
