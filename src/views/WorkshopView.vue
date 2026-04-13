@@ -186,7 +186,12 @@
                 ref="textareaEl"
               ></textarea>
               <div class="welcome-screen__actions">
-                <div class="mode-switch mode-switch--welcome" role="tablist" aria-label="生成模式">
+                <div
+                  v-if="!isSkillAssistantMode"
+                  class="mode-switch mode-switch--welcome"
+                  role="tablist"
+                  aria-label="生成模式"
+                >
                   <button
                     type="button"
                     class="mode-switch__option"
@@ -232,6 +237,7 @@
         对话
       </button>
       <button
+        v-if="showResultPanel"
         type="button"
         class="mobile-pane-switch__btn"
         :class="{ active: mobilePane === 'result' }"
@@ -242,9 +248,9 @@
     </div>
     <!-- Left: Chat Panel -->
     <div
-      v-show="!isMobile || mobilePane === 'chat'"
+      v-show="!isMobile || !showResultPanel || mobilePane === 'chat'"
       class="chat-panel"
-      :style="isMobile ? undefined : { width: leftWidth + '%' }"
+      :style="isMobile ? undefined : (showResultPanel ? { width: leftWidth + '%' } : { width: '100%' })"
     >
       <div class="chat-header">
         <div class="chat-header-main">
@@ -280,6 +286,16 @@
           </div>
         </div>
         <div class="header-actions">
+          <button
+            class="icon-btn"
+            :class="{ 'icon-btn--active': showWorkspaceFiles }"
+            title="打开文件目录"
+            @click="toggleWorkspaceFiles"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            </svg>
+          </button>
           <button
             class="icon-btn"
             :title="isMobile ? '打开对话侧栏' : '历史侧栏仅在移动端显示'"
@@ -432,7 +448,7 @@
           @input="autoResize"
           ref="textareaEl"
         ></textarea>
-        <div class="mode-switch" role="tablist" aria-label="生成模式">
+        <div v-if="!isSkillAssistantMode" class="mode-switch" role="tablist" aria-label="生成模式">
           <button
             type="button"
             class="mode-switch__option"
@@ -461,10 +477,10 @@
     </div>
 
     <!-- Divider -->
-    <div v-if="!isMobile" class="divider" @mousedown="startDrag"></div>
+    <div v-if="!isMobile && showResultPanel" class="divider" @mousedown="startDrag"></div>
 
     <!-- Right: Preview Panel -->
-    <div v-show="!isMobile || mobilePane === 'result'" class="results-panel">
+    <div v-if="showResultPanel" v-show="!isMobile || mobilePane === 'result'" class="results-panel">
       <div class="results-header">
         <span class="results-title">成果展示</span>
         <div class="header-actions">
@@ -552,7 +568,7 @@
         </aside>
 
         <div class="results-main">
-          <div v-if="showWorkspaceFiles" class="results-tabs">
+          <div v-if="showWorkspaceFiles && !isSkillAssistantMode" class="results-tabs">
             <button
               type="button"
               class="results-tab"
@@ -572,7 +588,7 @@
             </button>
           </div>
 
-          <div v-if="showWorkspaceFiles && workspaceActiveView === 'file'" class="file-viewer">
+          <div v-if="showWorkspaceFiles && (workspaceActiveView === 'file' || isSkillAssistantMode)" class="file-viewer">
             <div class="file-viewer-header">
               <div>
                 <div class="file-viewer-title">{{ workspaceSelectedFile.name || '选择文件' }}</div>
@@ -645,6 +661,18 @@
             <div class="debug-item">
               <div class="debug-label">Request Payload</div>
               <pre class="debug-value"><code>{{ requestPayloadText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">手动选择的 Skills</div>
+              <pre class="debug-value"><code>{{ selectedSkillsText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">Skill Resolve 结果</div>
+              <pre class="debug-value"><code>{{ skillResolutionText }}</code></pre>
+            </div>
+            <div class="debug-item">
+              <div class="debug-label">Skill 物化结果</div>
+              <pre class="debug-value"><code>{{ skillMaterializationText }}</code></pre>
             </div>
             <div class="debug-item">
               <div class="debug-label">Phase Timing</div>
@@ -782,12 +810,13 @@ import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout as logoutApi } from '../api/auth.js'
 import {
+  ensureAgentDoSessionMapping,
   // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
   fetchAgentDoWorkspaceFile,
   fetchAgentDoWorkspaceTree,
   normalizeWorkshopPreviewUrl,
   restoreAgentDoSessionMapping,
-  streamGenerate,
+  streamGenerateText,
   streamPreviewWithAgentDo,
   uploadHTML,
 } from '../api/workshop.js'
@@ -807,6 +836,8 @@ const router = useRouter()
 const route = useRoute()
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
+const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
+const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
 const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
@@ -814,6 +845,48 @@ const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || 
 const isMobile = ref(false)
 const mobilePane = ref('chat')
 const mobileSidebarOpen = ref(false)
+const selectedSkillMetas = ref([])
+
+function normalizeFunctionMode(mode) {
+  return String(mode || '').trim() === 'skill_assistant' ? 'skill_assistant' : 'workshop'
+}
+
+const currentFunctionMode = computed(() => normalizeFunctionMode(route.query.fm))
+const isSkillAssistantMode = computed(() => currentFunctionMode.value === 'skill_assistant')
+const selectedSkillIds = computed(() => selectedSkillMetas.value.map((item) => item.id).filter(Boolean))
+
+function loadStoredSkillSelection() {
+  if (typeof window === 'undefined') return
+  const raw = window.localStorage.getItem(WORKSHOP_SKILL_STORAGE_KEY)
+  if (!raw) {
+    selectedSkillMetas.value = []
+    return
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    const list = Array.isArray(parsed?.skills) ? parsed.skills : []
+    selectedSkillMetas.value = list
+      .map((item) => ({
+        id: String(item?.id || '').trim(),
+        name: String(item?.name || '').trim(),
+        version: String(item?.version || '').trim(),
+      }))
+      .filter((item) => item.id)
+  } catch {
+    selectedSkillMetas.value = []
+  }
+}
+
+function handleSkillSelectionChanged(event) {
+  const list = Array.isArray(event?.detail?.skills) ? event.detail.skills : []
+  selectedSkillMetas.value = list
+    .map((item) => ({
+      id: String(item?.id || '').trim(),
+      name: String(item?.name || '').trim(),
+      version: String(item?.version || '').trim(),
+    }))
+    .filter((item) => item.id)
+}
 
 // Layout / drag
 const workshopEl = ref(null)
@@ -961,6 +1034,7 @@ const previewFrameState = ref('idle')
 const showAgentDoDebug = ref(false)
 // const showSandboxPool = ref(false) // [容器池功能暂时禁用]
 const showWorkspaceFiles = ref(false)
+const showResultPanel = computed(() => !isSkillAssistantMode.value || showWorkspaceFiles.value)
 const agentDoDebug = ref({
   requestPayload: null,
   timeline: [],
@@ -977,6 +1051,8 @@ const agentDoDebug = ref({
   permissions: [],
   previewUrl: '',
   lastError: '',
+  skillResolution: null,
+  skillMaterialization: null,
 })
 const agentDoLive = ref({
   steps: [],
@@ -996,6 +1072,8 @@ const sandboxPool = ref({
 })
 */
 const workspaceActiveView = ref('preview')
+const workspaceBootstrapLoading = ref(false)
+const workspaceBootstrapError = ref('')
 const workspaceTreeLoading = ref(false)
 const workspaceTreeError = ref('')
 const workspaceTreeRoot = ref(null)
@@ -1022,6 +1100,8 @@ const currentWorkspaceRequest = computed(() => {
 })
 
 const workspaceBrowserSubtitle = computed(() => {
+  if (workspaceBootstrapLoading.value) return '正在初始化当前会话的 workspace'
+  if (workspaceBootstrapError.value) return workspaceBootstrapError.value
   if (workspaceTreeLoading.value) return '正在同步会话 workspace'
   if (workspaceTreeRoot.value) return '点击目录展开，点击文件查看内容'
   return '当前会话的 Agent-Do 工作目录'
@@ -1109,6 +1189,8 @@ async function canAutoRecoverCurrentWorkspace() {
 }
 
 function resetWorkspaceBrowser() {
+  workspaceBootstrapLoading.value = false
+  workspaceBootstrapError.value = ''
   workspaceTreeLoading.value = false
   workspaceTreeError.value = ''
   workspaceTreeRoot.value = null
@@ -1151,6 +1233,66 @@ function fileIcon(path) {
   return 'FILE'
 }
 
+let workspaceBootstrapInFlight = null
+
+function applyEnsuredSessionToConversation(mapping) {
+  const sessionId = String(mapping?.agentDoSessionId || '').trim()
+  const workspacePath = String(mapping?.workspacePath || '').trim()
+  if (!sessionId || !currentConversationId.value) return
+  agentDoDebug.value.sessionId = sessionId
+  agentDoDebug.value.workspacePath = workspacePath
+  conversationList.value = conversationList.value.map((item) => {
+    if (item.id !== currentConversationId.value) return item
+    return {
+      ...item,
+      preview: {
+        ...(item.preview || {}),
+        agentDoSessionId: sessionId,
+        workspacePath,
+      },
+      updatedAt: new Date().toISOString(),
+    }
+  })
+  schedulePersist()
+}
+
+async function ensureSkillAssistantWorkspaceReady(options = {}) {
+  const { force = false, silent = false } = options
+  if (!isSkillAssistantMode.value) return true
+  if (!currentWorkspaceRequest.value.ready) return false
+  if (!force && agentDoDebug.value.sessionId) return true
+  if (workspaceBootstrapInFlight) return workspaceBootstrapInFlight
+
+  workspaceBootstrapLoading.value = true
+  if (!silent) workspaceBootstrapError.value = ''
+
+  workspaceBootstrapInFlight = (async () => {
+    try {
+      const ensured = await ensureAgentDoSessionMapping({
+        username: currentWorkspaceRequest.value.username,
+        conversationId: currentWorkspaceRequest.value.conversationId,
+        title: chatTitle.value || 'Skill Assistant Session',
+      })
+      applyEnsuredSessionToConversation(ensured)
+      workspaceBootstrapError.value = ''
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const friendly = `工作区初始化失败（${message}），可点击刷新重试`
+      workspaceBootstrapError.value = friendly
+      if (!silent) {
+        workspaceTreeError.value = friendly
+      }
+      return false
+    } finally {
+      workspaceBootstrapLoading.value = false
+      workspaceBootstrapInFlight = null
+    }
+  })()
+
+  return workspaceBootstrapInFlight
+}
+
 function findFirstFileNode(node) {
   if (!node) return null
   if (node.type === 'file') return node
@@ -1165,6 +1307,16 @@ async function loadWorkspaceTree(force = false) {
   if (!currentWorkspaceRequest.value.ready) return
   if (workspaceTreeLoading.value) return
   if (workspaceTreeRoot.value && !force) return
+
+  const workspaceReady = await ensureSkillAssistantWorkspaceReady({
+    force,
+    silent: !showWorkspaceFiles.value,
+  })
+  if (isSkillAssistantMode.value && !workspaceReady) {
+    if (!showWorkspaceFiles.value) return
+    workspaceTreeError.value = workspaceBootstrapError.value || '工作区初始化失败，可点击刷新重试'
+    return
+  }
 
   workspaceTreeLoading.value = true
   workspaceTreeError.value = ''
@@ -1240,9 +1392,20 @@ function handleWorkspaceNodeClick(node) {
 
 async function toggleWorkspaceFiles() {
   showWorkspaceFiles.value = !showWorkspaceFiles.value
-  if (!showWorkspaceFiles.value) return
+  if (!showWorkspaceFiles.value) {
+    if (isSkillAssistantMode.value && isMobile.value) {
+      mobilePane.value = 'chat'
+    }
+    return
+  }
   // showSandboxPool.value = false // [容器池功能暂时禁用]
   showAgentDoDebug.value = false
+  if (isSkillAssistantMode.value) {
+    workspaceActiveView.value = 'file'
+  }
+  if (isMobile.value) {
+    mobilePane.value = 'result'
+  }
   await loadWorkspaceTree()
 }
 
@@ -1744,6 +1907,23 @@ const permissionText = computed(() => {
     .join('\n')
 })
 
+const selectedSkillsText = computed(() => {
+  if (!selectedSkillMetas.value.length) return '-'
+  return selectedSkillMetas.value
+    .map((item) => `${item.name || item.id}${item.version ? ` (v${item.version})` : ''}`)
+    .join('\n')
+})
+
+const skillResolutionText = computed(() => {
+  const resolution = agentDoDebug.value.skillResolution
+  return resolution ? JSON.stringify(resolution, null, 2) : '-'
+})
+
+const skillMaterializationText = computed(() => {
+  const materialization = agentDoDebug.value.skillMaterialization
+  return materialization ? JSON.stringify(materialization, null, 2) : '-'
+})
+
 const requestPayloadText = computed(() => {
   if (!agentDoDebug.value.requestPayload) return '-'
   const payload = { ...agentDoDebug.value.requestPayload }
@@ -1832,6 +2012,8 @@ function resetAgentDoDebug() {
     permissions: [],
     previewUrl: '',
     lastError: '',
+    skillResolution: null,
+    skillMaterialization: null,
   }
   agentDoLive.value = {
     steps: [],
@@ -1861,6 +2043,8 @@ function buildAgentDoTraceSnapshot() {
     permissions: agentDoDebug.value.permissions || [],
     previewUrl: agentDoDebug.value.previewUrl || '',
     lastError: agentDoDebug.value.lastError || '',
+    skillResolution: agentDoDebug.value.skillResolution || null,
+    skillMaterialization: agentDoDebug.value.skillMaterialization || null,
     steps: agentDoLive.value.steps || [],
     reasoning: agentDoLive.value.reasoning || '',
     answer: agentDoLive.value.answer || '',
@@ -1911,6 +2095,7 @@ function buildConversationSnapshot() {
   return {
     id: currentConversationId.value,
     title: chatTitle.value || '新对话',
+    conversationMode: normalizeFunctionMode(current?.conversationMode || currentFunctionMode.value),
     orderIndex: current?.orderIndex ?? null,
     createdAt: current?.createdAt || new Date().toISOString(),
     messages: cloneMessages(messages.value),
@@ -2201,11 +2386,14 @@ async function createNewConversation(options = {}) {
     }
     return currentConversation
   }
-  const conversation = createEmptyConversation()
+  const conversation = createEmptyConversation(undefined, currentFunctionMode.value)
   conversationList.value = [...conversationList.value, conversation]
   syncConversationPageById(conversation.id)
   await applyConversation(conversation)
   await waitForConversationApply()
+  if (conversation.conversationMode === 'skill_assistant') {
+    await ensureSkillAssistantWorkspaceReady({ force: true, silent: false })
+  }
   if (isMobile.value) {
     mobilePane.value = 'chat'
     mobileSidebarOpen.value = false
@@ -2216,8 +2404,13 @@ async function createNewConversation(options = {}) {
   return conversation
 }
 
-async function handleExternalCreateConversation() {
+async function handleExternalCreateConversation(event) {
   if (!historyReady.value || busy.value) return
+  const requestedMode = normalizeFunctionMode(event?.detail?.mode || route.query.fm)
+  if (requestedMode !== currentFunctionMode.value) {
+    await router.push({ path: '/workshop', query: { ...route.query, fm: requestedMode, new: '1' } })
+    return
+  }
   await createNewConversation({ startRename: false })
 }
 
@@ -2290,11 +2483,16 @@ async function loadWorkshopHistory() {
     return
   }
   const conversations = await fetchWorkshopConversations()
-  conversationList.value = conversations
+  conversationList.value = Array.isArray(conversations)
+    ? conversations.map((item) => ({
+      ...item,
+      conversationMode: normalizeFunctionMode(item?.conversationMode || currentFunctionMode.value),
+    }))
+    : []
   const routeConversationId = String(route.query.cid || '').trim()
-  let current = conversations.find((item) => item.id === routeConversationId) || conversations[0]
+  let current = conversationList.value.find((item) => item.id === routeConversationId) || conversationList.value[0]
   if (!current) {
-    current = createEmptyConversation()
+    current = createEmptyConversation(undefined, currentFunctionMode.value)
     conversationList.value = [current]
     historyReady.value = true
     await applyConversation(current)
@@ -2316,6 +2514,7 @@ function normalizeConversationComparable(conversation) {
   return JSON.stringify({
     id: String(conversation?.id || ''),
     title: String(conversation?.title || ''),
+    conversationMode: normalizeFunctionMode(conversation?.conversationMode || 'workshop'),
     orderIndex: conversation?.orderIndex ?? null,
     createdAt: String(conversation?.createdAt || ''),
     messages: Array.isArray(conversation?.messages) ? conversation.messages : [],
@@ -2809,6 +3008,8 @@ function applyAgentDoStreamEvent(event) {
   if (event.type === 'meta') {
     agentDoDebug.value.sessionId = event.agentDoSessionId || ''
     agentDoDebug.value.workspacePath = event.workspacePath || ''
+    agentDoDebug.value.skillResolution = event.skills?.resolution || null
+    agentDoDebug.value.skillMaterialization = event.skills?.materialization || null
     syncAgentDoStreamingPlaceholder('正在连接 Agent-Do...')
     return null
   }
@@ -3017,78 +3218,43 @@ async function sendLegacyMessage(options = {}) {
   streamingHtml.value = ''
   loading.value = false
 
-  let generatedHTML = ''
-  let cleanedHTML = ''
   try {
-    for await (const part of streamGenerate(
+    await ensureSkillAssistantWorkspaceReady({ silent: true })
+    for await (const part of streamGenerateText(
       text,
-      '你是资深前端与交互设计师，擅长用单个 HTML 文件实现完整、美观、可交互的页面；'
-      + '面向用户的说明需要写清功能定位、结构亮点，并交代流式输出与右侧预览的进度含义。'
+      '你是专业的 Skill 助手。请直接输出清晰、可执行的文本答案；'
+      + '除非用户明确要求，不要生成 HTML 页面代码。',
+      {
+        conversationId: currentWorkspaceRequest.value.conversationId,
+        username: currentWorkspaceRequest.value.username,
+        title: chatTitle.value || 'Skill Assistant Session',
+        manualSkillIds: selectedSkillIds.value,
+        autoResolveSkills: true,
+        skillMode: currentFunctionMode.value,
+        maxSkillCount: 3,
+      },
     )) {
-      if (part.kind === 'friendly') {
-        streamingFriendly.value += part.content
-      } else {
-        streamingHtml.value += part.content
-        generatedHTML += part.content
-      }
+      // Skill Assistant 一律按文本流式展示，避免误入 HTML 预览链路
+      streamingFriendly.value += part.content
       await nextTick()
       scrollBottom()
     }
 
-    const friendlyText = streamingFriendly.value.trim()
-    cleanedHTML = normalizeGeneratedHtml(generatedHTML)
-    cleanedHTML = enforceWorkshopPreviewFit(cleanedHTML)
-    const htmlText = cleanedHTML.trim()
-
-    if (!htmlText) {
-      assistantMsg.streamingLive = false
-      streamingFriendly.value = ''
-      streamingHtml.value = ''
-      const hint = friendlyText
-        ? `${friendlyText}\n\n`
-        : ''
-      assistantMsg.segments = [
-        {
-          kind: 'text',
-          content:
-            `${hint}未识别到页面 HTML。请让模型先输出说明，再单独一行输出分隔符 \`<<<HTML_BEGIN>>>\`，其后紧跟完整 HTML。请重试或简化需求。`,
-        },
-      ]
-    } else {
-      assistantMsg.streamingLive = false
-      streamingFriendly.value = ''
-      streamingHtml.value = ''
-
-      // 生成完成后上传到 OSS
-      loading.value = true
-      assistantMsg.segments = [
-        { kind: 'text', content: '正在上传文件...' },
-      ]
-      await nextTick()
-      scrollBottom()
-
-      const fileName = `workshop-${Date.now()}.html`
-      const { url } = await uploadHTML(fileName, cleanedHTML)
-
-      // 更新消息：说明 + 完成提示 + 预览卡片 + 折叠展示的 HTML 源码
-      assistantMsg.segments = [
-        { kind: 'text', content: '✓ **已完成**，已上传，可在右侧预览或新标签页打开。' },
-        {
-          kind: 'card',
-          type: 'result',
-          icon: 'HTML',
-          title: '在线预览',
-          content: url,
-          open: true,
-        },
-        { kind: 'html_source', content: cleanedHTML },
-      ]
-
-      // 右侧仅在全部生成并上传成功后首次用 URL 加载，流式过程中不刷新 iframe
-      previewUrl.value = url
-      previewMode.value = 'url'
-      iframeKey.value++
-    }
+    const answerText = streamingFriendly.value.trim()
+    assistantMsg.streamingLive = false
+    streamingFriendly.value = ''
+    streamingHtml.value = ''
+    assistantMsg.segments = [
+      {
+        kind: 'text',
+        content: answerText || '已完成，但未收到可展示内容，请重试一次。',
+      },
+    ]
+    // Skill Assistant 不应污染右侧预览状态
+    previewMode.value = 'empty'
+    previewUrl.value = ''
+    previewHtml.value = ''
+    previewCode.value = { lang: '', content: '' }
 
   } catch (e) {
     assistantMsg.streamingLive = false
@@ -3119,6 +3285,11 @@ async function sendLegacyMessage(options = {}) {
 }
 
 async function sendMessage() {
+  if (currentFunctionMode.value === 'skill_assistant') {
+    await sendLegacyMessage()
+    return
+  }
+
   const text = inputText.value.trim()
   if (!text || busy.value) return
 
@@ -3151,6 +3322,10 @@ async function sendMessage() {
     username: currentUser.value?.username || 'workshop_guest',
     title: title || chatTitle.value || 'Workshop Project',
     generationMode: generationMode.value,
+    manualSkillIds: selectedSkillIds.value,
+    autoResolveSkills: true,
+    skillMode: currentFunctionMode.value,
+    maxSkillCount: 3,
   }
   agentDoDebug.value.requestPayload = requestPayload
   agentDoDebug.value.requestStartedAt = Date.now()
@@ -3179,6 +3354,10 @@ async function sendMessage() {
         username,
         title: requestTitle,
         generationMode: generationMode.value,
+        manualSkillIds: selectedSkillIds.value,
+        autoResolveSkills: true,
+        skillMode: currentFunctionMode.value,
+        maxSkillCount: 3,
       })) {
         const maybeResult = applyAgentDoStreamEvent(event)
         if (maybeResult?.type === 'stream_error') {
@@ -3358,15 +3537,17 @@ function shouldForkFailedSingleHtmlConversation() {
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
+    loadStoredSkillSelection()
     window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
     window.addEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
+    window.addEventListener(WORKSHOP_SKILL_SELECTED_EVENT, handleSkillSelectionChanged)
     window.addEventListener('resize', syncViewportMode)
     syncViewportMode()
   }
   try {
     await loadWorkshopHistory()
   } catch (e) {
-    const fallback = createEmptyConversation()
+    const fallback = createEmptyConversation(undefined, currentFunctionMode.value)
     conversationList.value = [fallback]
     historyReady.value = true
     await applyConversation(fallback)
@@ -3438,6 +3619,7 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
     window.removeEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
+    window.removeEventListener(WORKSHOP_SKILL_SELECTED_EVENT, handleSkillSelectionChanged)
     window.removeEventListener('resize', syncViewportMode)
   }
   stopDrag()
@@ -3451,6 +3633,16 @@ watch(
   async (flag) => {
     if (String(flag || '').trim() !== '1' || !historyReady.value) return
     await handleExternalCreateConversation()
+  },
+)
+
+watch(
+  () => showResultPanel.value,
+  (visible) => {
+    if (visible) return
+    if (mobilePane.value === 'result') {
+      mobilePane.value = 'chat'
+    }
   },
 )
 </script>

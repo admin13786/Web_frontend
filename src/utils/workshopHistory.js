@@ -27,11 +27,13 @@ function createConversationId() {
   return `ws_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function createEmptyConversation(title = '新对话') {
+export function createEmptyConversation(title = '新对话', mode = 'workshop') {
+  const conversationMode = String(mode || '').trim() === 'skill_assistant' ? 'skill_assistant' : 'workshop'
   const now = new Date().toISOString()
   return {
     id: createConversationId(),
     title,
+    conversationMode,
     orderIndex: null,
     createdAt: now,
     updatedAt: now,
