@@ -478,6 +478,51 @@ export async function fetchAgentDoWorkspaceFile({ username, conversationId, path
   return data
 }
 
+export async function uploadSkillAssistantFiles({ username, conversationId, title = '' }, files = []) {
+  const normalizedUsername = String(username || '').trim()
+  const normalizedConversationId = String(conversationId || '').trim()
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
+
+  if (!normalizedUsername || !normalizedConversationId) {
+    throw new Error('缺少会话信息，无法上传附件')
+  }
+  if (!normalizedFiles.length) {
+    throw new Error('请选择至少一个文件')
+  }
+
+  const formData = new FormData()
+  if (title) {
+    formData.append('title', title)
+  }
+  for (const file of normalizedFiles) {
+    formData.append('files', file)
+  }
+
+  const response = await fetch(
+    `${API_BASE}/agent-do/files/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedConversationId)}/upload`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+      },
+      body: formData,
+    },
+  )
+
+  let data = null
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    throw new Error(extractApiErrorMessage(data, response.status))
+  }
+
+  return data
+}
+
 export async function fetchWorkshopSkills({
   page = 1,
   pageSize = 100,

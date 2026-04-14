@@ -185,7 +185,66 @@
                 @input="autoResize"
                 ref="textareaEl"
               ></textarea>
+              <div
+                v-if="isSkillAssistantMode && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
+                class="skill-attachment-panel skill-attachment-panel--welcome"
+              >
+                <div v-if="attachmentUploadError" class="skill-attachment-panel__error">{{ attachmentUploadError }}</div>
+                <div v-if="pendingAttachments.length" class="skill-attachment-group">
+                  <div class="skill-attachment-group__title">待上传附件</div>
+                  <div class="skill-attachment-list">
+                    <div
+                      v-for="item in pendingAttachments"
+                      :key="item.id"
+                      class="skill-attachment-chip skill-attachment-chip--pending"
+                    >
+                      <div class="skill-attachment-chip__main">
+                        <span class="skill-attachment-chip__name">{{ item.name }}</span>
+                        <span class="skill-attachment-chip__meta">{{ formatAttachmentSize(item.size) }} · 待发送</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="skill-attachment-chip__remove"
+                        title="移除待上传附件"
+                        @click="removePendingAttachment(item.id)"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="uploadedAttachments.length" class="skill-attachment-group">
+                  <div class="skill-attachment-group__title">已上传附件</div>
+                  <div class="skill-attachment-list">
+                    <div
+                      v-for="item in uploadedAttachments"
+                      :key="item.id"
+                      class="skill-attachment-chip"
+                      :class="attachmentStatusClass(item)"
+                    >
+                      <div class="skill-attachment-chip__main">
+                        <span class="skill-attachment-chip__name">{{ item.originalName }}</span>
+                        <span class="skill-attachment-chip__meta">
+                          {{ formatAttachmentSize(item.size) }} · {{ attachmentStatusText(item) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="welcome-screen__actions">
+                <button
+                  v-if="isSkillAssistantMode"
+                  type="button"
+                  class="attachment-btn attachment-btn--welcome"
+                  :disabled="busy || attachmentUploading"
+                  @click="openAttachmentPicker"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.2a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.48-8.48"/>
+                  </svg>
+                  <span>{{ attachmentUploading ? '上传中...' : '上传文件' }}</span>
+                </button>
                 <div
                   v-if="!isSkillAssistantMode"
                   class="mode-switch mode-switch--welcome"
@@ -213,7 +272,7 @@
                     <span class="mode-switch__hint">多文件</span>
                   </button>
                 </div>
-                <button class="welcome-screen__send" :disabled="!inputText.trim() || busy" @click="sendMessage">
+                <button class="welcome-screen__send" :disabled="!canSendCurrentMessage" @click="sendMessage">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="22" y1="2" x2="11" y2="13"/>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -448,6 +507,18 @@
           @input="autoResize"
           ref="textareaEl"
         ></textarea>
+        <button
+          v-if="isSkillAssistantMode"
+          type="button"
+          class="attachment-btn"
+          :disabled="busy || attachmentUploading"
+          @click="openAttachmentPicker"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.2a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.48-8.48"/>
+          </svg>
+          <span>{{ attachmentUploading ? '上传中...' : '上传文件' }}</span>
+        </button>
         <div v-if="!isSkillAssistantMode" class="mode-switch" role="tablist" aria-label="生成模式">
           <button
             type="button"
@@ -470,9 +541,56 @@
             <span class="mode-switch__hint">多文件</span>
           </button>
         </div>
-        <button class="send-btn" :disabled="!inputText.trim() || busy" @click="sendMessage">
+        <button class="send-btn" :disabled="!canSendCurrentMessage" @click="sendMessage">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
+      </div>
+      <div
+        v-if="isSkillAssistantMode && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
+        class="skill-attachment-panel skill-attachment-panel--chat"
+      >
+        <div v-if="attachmentUploadError" class="skill-attachment-panel__error">{{ attachmentUploadError }}</div>
+        <div v-if="pendingAttachments.length" class="skill-attachment-group">
+          <div class="skill-attachment-group__title">待上传附件</div>
+          <div class="skill-attachment-list">
+            <div
+              v-for="item in pendingAttachments"
+              :key="item.id"
+              class="skill-attachment-chip skill-attachment-chip--pending"
+            >
+              <div class="skill-attachment-chip__main">
+                <span class="skill-attachment-chip__name">{{ item.name }}</span>
+                <span class="skill-attachment-chip__meta">{{ formatAttachmentSize(item.size) }} · 待发送</span>
+              </div>
+              <button
+                type="button"
+                class="skill-attachment-chip__remove"
+                title="移除待上传附件"
+                @click="removePendingAttachment(item.id)"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-if="uploadedAttachments.length" class="skill-attachment-group">
+          <div class="skill-attachment-group__title">已上传附件</div>
+          <div class="skill-attachment-list">
+            <div
+              v-for="item in uploadedAttachments"
+              :key="item.id"
+              class="skill-attachment-chip"
+              :class="attachmentStatusClass(item)"
+            >
+              <div class="skill-attachment-chip__main">
+                <span class="skill-attachment-chip__name">{{ item.originalName }}</span>
+                <span class="skill-attachment-chip__meta">
+                  {{ formatAttachmentSize(item.size) }} · {{ attachmentStatusText(item) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -801,6 +919,14 @@
       @confirm="confirmDeleteConversation"
       @cancel="onDeleteConversationModalCancel"
     />
+    <input
+      ref="attachmentInputEl"
+      type="file"
+      class="skill-attachment-input"
+      :accept="SKILL_ATTACHMENT_ACCEPT"
+      multiple
+      @change="handleAttachmentInputChange"
+    />
     </div>
   </div>
 </template>
@@ -818,6 +944,7 @@ import {
   restoreAgentDoSessionMapping,
   streamGenerateText,
   streamPreviewWithAgentDo,
+  uploadSkillAssistantFiles,
   uploadHTML,
 } from '../api/workshop.js'
 import {
@@ -838,6 +965,12 @@ const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
 const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
+const SKILL_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.md', '.txt'])
+const SKILL_ATTACHMENT_MAX_FILES = 5
+const SKILL_ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024
+const SKILL_ATTACHMENT_MAX_TOTAL_SIZE = 25 * 1024 * 1024
+const SKILL_ATTACHMENT_ACCEPT = '.pdf,.docx,.md,.txt'
+const SKILL_ATTACHMENT_DEFAULT_PROMPT = '请先读取我刚上传的文件，概括重点，并告诉我接下来你能如何帮助我。'
 const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
@@ -854,6 +987,12 @@ function normalizeFunctionMode(mode) {
 const currentFunctionMode = computed(() => normalizeFunctionMode(route.query.fm))
 const isSkillAssistantMode = computed(() => currentFunctionMode.value === 'skill_assistant')
 const selectedSkillIds = computed(() => selectedSkillMetas.value.map((item) => item.id).filter(Boolean))
+const attachmentInputEl = ref(null)
+const pendingAttachments = ref([])
+const uploadedAttachments = ref([])
+const attachmentUploading = ref(false)
+const attachmentUploadError = ref('')
+let attachmentSelectionSeq = 0
 
 function loadStoredSkillSelection() {
   if (typeof window === 'undefined') return
@@ -886,6 +1025,152 @@ function handleSkillSelectionChanged(event) {
       version: String(item?.version || '').trim(),
     }))
     .filter((item) => item.id)
+}
+
+function getAttachmentExtension(name) {
+  const normalized = String(name || '').trim().toLowerCase()
+  const dotIndex = normalized.lastIndexOf('.')
+  return dotIndex >= 0 ? normalized.slice(dotIndex) : ''
+}
+
+function formatAttachmentSize(size) {
+  const bytes = Number(size || 0)
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function normalizeUploadedAttachmentRecord(item) {
+  return {
+    id: String(item?.id || '').trim(),
+    originalName: String(item?.originalName || '').trim() || String(item?.safeName || '').trim() || '未命名文件',
+    safeName: String(item?.safeName || '').trim(),
+    extension: String(item?.extension || '').trim().toLowerCase(),
+    contentType: String(item?.contentType || '').trim(),
+    size: Number(item?.size || 0),
+    uploadedAt: String(item?.uploadedAt || '').trim(),
+    originalPath: String(item?.originalPath || '').trim(),
+    extractedPath: String(item?.extractedPath || '').trim(),
+    extractionStatus: String(item?.extractionStatus || '').trim() || 'success',
+    extractedChars: Number(item?.extractedChars || 0),
+    error: String(item?.error || '').trim(),
+  }
+}
+
+function mergeUploadedAttachmentRecords(existing, incoming) {
+  const merged = []
+  const byId = new Map()
+  for (const source of [existing, incoming]) {
+    const list = Array.isArray(source) ? source : []
+    for (const item of list) {
+      const normalized = normalizeUploadedAttachmentRecord(item)
+      if (!normalized.id) continue
+      byId.set(normalized.id, normalized)
+    }
+  }
+  for (const item of byId.values()) {
+    merged.push(item)
+  }
+  merged.sort((a, b) => String(a.uploadedAt || '').localeCompare(String(b.uploadedAt || '')))
+  return merged
+}
+
+function attachmentStatusText(item) {
+  const status = String(item?.extractionStatus || '').trim().toLowerCase()
+  if (status === 'failed') return '提取失败'
+  if (status === 'empty') return '已上传，提取为空'
+  return '上传成功'
+}
+
+function attachmentStatusClass(item) {
+  const status = String(item?.extractionStatus || '').trim().toLowerCase()
+  if (status === 'failed') return 'skill-attachment-chip--failed'
+  if (status === 'empty') return 'skill-attachment-chip--empty'
+  return 'skill-attachment-chip--success'
+}
+
+function resetAttachmentInput() {
+  if (attachmentInputEl.value) {
+    attachmentInputEl.value.value = ''
+  }
+}
+
+function openAttachmentPicker() {
+  if (!isSkillAssistantMode.value || busy.value || attachmentUploading.value) return
+  attachmentInputEl.value?.click()
+}
+
+function removePendingAttachment(id) {
+  pendingAttachments.value = pendingAttachments.value.filter((item) => item.id !== id)
+  if (!pendingAttachments.value.length) {
+    attachmentUploadError.value = ''
+  }
+}
+
+function buildPendingAttachmentRecord(file) {
+  attachmentSelectionSeq += 1
+  return {
+    id: `pending-${Date.now()}-${attachmentSelectionSeq}`,
+    file,
+    name: String(file?.name || '').trim() || '未命名文件',
+    size: Number(file?.size || 0),
+    extension: getAttachmentExtension(file?.name),
+    lastModified: Number(file?.lastModified || 0),
+  }
+}
+
+function validatePendingAttachmentFiles(files) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
+  if (!normalizedFiles.length) return ''
+
+  const nextCount = pendingAttachments.value.length + normalizedFiles.length
+  if (nextCount > SKILL_ATTACHMENT_MAX_FILES) {
+    return `最多只能选择 ${SKILL_ATTACHMENT_MAX_FILES} 个附件`
+  }
+
+  let totalSize = pendingAttachments.value.reduce((sum, item) => sum + Number(item?.size || 0), 0)
+  for (const file of normalizedFiles) {
+    const extension = getAttachmentExtension(file?.name)
+    if (!SKILL_ATTACHMENT_ALLOWED_EXTENSIONS.has(extension)) {
+      return `不支持的文件类型：${extension || String(file?.name || '未知文件')}`
+    }
+    const size = Number(file?.size || 0)
+    if (size > SKILL_ATTACHMENT_MAX_FILE_SIZE) {
+      return `文件过大：${file.name}（单文件最大 ${formatAttachmentSize(SKILL_ATTACHMENT_MAX_FILE_SIZE)}）`
+    }
+    totalSize += size
+    if (totalSize > SKILL_ATTACHMENT_MAX_TOTAL_SIZE) {
+      return `附件总大小超过限制（最大 ${formatAttachmentSize(SKILL_ATTACHMENT_MAX_TOTAL_SIZE)}）`
+    }
+  }
+
+  return ''
+}
+
+function handleAttachmentInputChange(event) {
+  const rawFiles = Array.from(event?.target?.files || [])
+  resetAttachmentInput()
+  if (!rawFiles.length) return
+
+  const validationMessage = validatePendingAttachmentFiles(rawFiles)
+  if (validationMessage) {
+    attachmentUploadError.value = validationMessage
+    return
+  }
+
+  const existingKeys = new Set(
+    pendingAttachments.value.map((item) => `${item.name}|${item.size}|${item.lastModified}`),
+  )
+  const nextPending = [...pendingAttachments.value]
+  for (const file of rawFiles) {
+    const dedupeKey = `${String(file?.name || '').trim()}|${Number(file?.size || 0)}|${Number(file?.lastModified || 0)}`
+    if (existingKeys.has(dedupeKey)) continue
+    existingKeys.add(dedupeKey)
+    nextPending.push(buildPendingAttachmentRecord(file))
+  }
+  pendingAttachments.value = nextPending
+  attachmentUploadError.value = ''
 }
 
 // Layout / drag
@@ -938,6 +1223,15 @@ function allocMessageKey() {
 const messages = ref([])
 const inputText = ref('')
 const isWelcomeScreen = computed(() => messages.value.length === 0 && !busy.value && !loading.value)
+const canSendCurrentMessage = computed(() => {
+  if (busy.value || attachmentUploading.value) return false
+  if (!isSkillAssistantMode.value) return Boolean(inputText.value.trim())
+  return Boolean(
+    inputText.value.trim()
+    || pendingAttachments.value.length
+    || (uploadedAttachments.value.length && messages.value.length === 0),
+  )
+})
 const WORKSHOP_MODE_STORAGE_KEY = 'workshop:generation-mode'
 const generationMode = ref(loadGenerationMode())
 /** SSE：给用户看的说明（Markdown） */
@@ -1112,21 +1406,21 @@ const workspaceFlatNodes = computed(() => {
   if (!root) return []
 
   const nodes = []
-  const walk = (node, depth = 0) => {
-    if (node.path || depth > 0) {
+  const walk = (node, depth = 0, isRoot = false) => {
+    if (!isRoot) {
       nodes.push({
         ...node,
         depth,
       })
     }
     if (node.type !== 'directory') return
-    if (depth > 0 && !isDirectoryExpanded(node.path)) return
+    if (!isRoot && !isDirectoryExpanded(node.path)) return
     for (const child of node.children || []) {
-      walk(child, depth + (depth > 0 ? 1 : 0))
+      walk(child, depth + 1, false)
     }
   }
 
-  walk(root, 0)
+  walk(root, -1, true)
   return nodes
 })
 
@@ -1221,6 +1515,20 @@ function toggleDirectoryExpanded(path) {
   }
 }
 
+function expandDirectoryChainForPath(path) {
+  const normalized = String(path || '').trim().replace(/^\/+|\/+$/g, '')
+  if (!normalized) return
+  const segments = normalized.split('/').filter(Boolean)
+  if (segments.length <= 1) return
+  const nextExpanded = new Set(workspaceExpandedDirs.value)
+  let currentPath = ''
+  for (const segment of segments.slice(0, -1)) {
+    currentPath = currentPath ? `${currentPath}/${segment}` : segment
+    nextExpanded.add(currentPath)
+  }
+  workspaceExpandedDirs.value = Array.from(nextExpanded)
+}
+
 function fileIcon(path) {
   const lower = String(path || '').toLowerCase()
   if (lower.endsWith('.html')) return 'HTML'
@@ -1254,6 +1562,36 @@ function applyEnsuredSessionToConversation(mapping) {
     }
   })
   schedulePersist()
+}
+
+async function uploadPendingSkillAttachments() {
+  if (!pendingAttachments.value.length) return []
+
+  attachmentUploading.value = true
+  attachmentUploadError.value = ''
+
+  try {
+    const response = await uploadSkillAssistantFiles(
+      {
+        username: currentWorkspaceRequest.value.username,
+        conversationId: currentWorkspaceRequest.value.conversationId,
+        title: chatTitle.value || 'Skill Assistant Session',
+      },
+      pendingAttachments.value.map((item) => item.file),
+    )
+    applyEnsuredSessionToConversation(response)
+    uploadedAttachments.value = mergeUploadedAttachmentRecords(uploadedAttachments.value, response?.files || [])
+    pendingAttachments.value = []
+    if (showWorkspaceFiles.value && currentWorkspaceRequest.value.ready) {
+      await loadWorkspaceTree(true)
+    }
+    return Array.isArray(response?.files) ? response.files : []
+  } catch (error) {
+    attachmentUploadError.value = error instanceof Error ? error.message : String(error)
+    throw error
+  } finally {
+    attachmentUploading.value = false
+  }
 }
 
 async function ensureSkillAssistantWorkspaceReady(options = {}) {
@@ -1323,22 +1661,18 @@ async function loadWorkspaceTree(force = false) {
   try {
     const data = await fetchAgentDoWorkspaceTree(currentWorkspaceRequest.value)
     workspaceTreeRoot.value = data?.root || null
-    const rootChildren = Array.isArray(data?.root?.children) ? data.root.children : []
     workspaceExpandedDirs.value = ['']
-    for (const child of rootChildren) {
-      if (child?.type === 'directory') {
-        workspaceExpandedDirs.value.push(child.path || '')
-      }
-    }
 
     const stillSelected = workspaceSelectedFile.value.path
       ? workspaceFlatNodes.value.find((item) => item.path === workspaceSelectedFile.value.path)
       : null
     if (stillSelected?.type === 'file') {
+      expandDirectoryChainForPath(stillSelected.path)
       await loadWorkspaceFile(stillSelected.path, true)
     } else if (!workspaceSelectedFile.value.path) {
       const firstFile = findFirstFileNode(data?.root)
       if (firstFile?.path) {
+        expandDirectoryChainForPath(firstFile.path)
         await loadWorkspaceFile(firstFile.path)
       }
     }
@@ -1361,6 +1695,7 @@ async function loadWorkspaceFile(path, force = false) {
   workspaceFileLoading.value = true
   workspaceFileError.value = ''
   workspaceActiveView.value = 'file'
+  expandDirectoryChainForPath(nextPath)
   try {
     const data = await fetchAgentDoWorkspaceFile({
       ...currentWorkspaceRequest.value,
@@ -2105,6 +2440,7 @@ function buildConversationSnapshot() {
       html: previewHtml.value,
       url: previewUrl.value,
       code: { ...previewCode.value },
+      attachments: uploadedAttachments.value.map((item) => ({ ...item })),
       agentDoSessionId,
       workspacePath,
     },
@@ -2250,6 +2586,10 @@ async function applyConversation(conversation) {
     lang: conversation.preview?.code?.lang || '',
     content: conversation.preview?.code?.content || '',
   }
+  uploadedAttachments.value = mergeUploadedAttachmentRecords([], conversation.preview?.attachments || [])
+  pendingAttachments.value = []
+  attachmentUploadError.value = ''
+  resetAttachmentInput()
   streamingFriendly.value = ''
   streamingHtml.value = ''
   resetAgentDoDebug()
@@ -3286,7 +3626,24 @@ async function sendLegacyMessage(options = {}) {
 
 async function sendMessage() {
   if (currentFunctionMode.value === 'skill_assistant') {
-    await sendLegacyMessage()
+    const text = inputText.value.trim()
+    const shouldSendDefaultPrompt = !text && (
+      pendingAttachments.value.length > 0
+      || (uploadedAttachments.value.length > 0 && messages.value.length === 0)
+    )
+    if (!text && !shouldSendDefaultPrompt) return
+
+    try {
+      if (pendingAttachments.value.length) {
+        await uploadPendingSkillAttachments()
+      }
+    } catch {
+      return
+    }
+
+    await sendLegacyMessage({
+      textOverride: text || SKILL_ATTACHMENT_DEFAULT_PROMPT,
+    })
     return
   }
 
@@ -3500,6 +3857,9 @@ function clearChat() {
   streamingFriendly.value = ''
   streamingHtml.value = ''
   streamingSegments.value = []
+  pendingAttachments.value = []
+  attachmentUploadError.value = ''
+  resetAttachmentInput()
   resetAgentDoDebug()
   resetWorkspaceBrowser()
   chatTitle.value = '新对话'
@@ -3565,6 +3925,15 @@ watch(
 
 watch(
   [messages, chatTitle, previewMode, previewHtml, previewUrl, previewCode],
+  () => {
+    if (historyHydrating) return
+    schedulePersist()
+  },
+  { deep: true },
+)
+
+watch(
+  () => uploadedAttachments.value,
   () => {
     if (historyHydrating) return
     schedulePersist()
@@ -4265,6 +4634,162 @@ watch(
 .welcome-screen__send:disabled {
   opacity: 0.42;
   cursor: not-allowed;
+}
+
+.attachment-btn {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.12));
+  background: var(--bg-card, rgba(255,255,255,0.06));
+  color: var(--text-primary, #e8e8f0);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+
+.attachment-btn:hover:not(:disabled) {
+  background: var(--workshop-hover-bg, rgba(255,255,255,0.08));
+  border-color: rgba(99, 102, 241, 0.28);
+}
+
+.attachment-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.attachment-btn--welcome {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.attachment-btn--welcome:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.skill-attachment-input {
+  display: none;
+}
+
+.skill-attachment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.skill-attachment-panel--chat {
+  padding: 0 16px 12px;
+  margin-top: 0;
+}
+
+.skill-attachment-panel__error {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  background: rgba(127, 29, 29, 0.16);
+  color: #fecaca;
+  font-size: 0.8rem;
+}
+
+.skill-attachment-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-attachment-group__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.skill-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: min(100%, 320px);
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.skill-attachment-chip__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-attachment-chip__name,
+.skill-attachment-chip__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-attachment-chip__name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+}
+
+.skill-attachment-chip__meta {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.skill-attachment-chip__remove {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.22);
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.skill-attachment-chip__remove:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.skill-attachment-chip--pending {
+  border-color: rgba(96, 165, 250, 0.22);
+  background: rgba(30, 64, 175, 0.12);
+}
+
+.skill-attachment-chip--success {
+  border-color: rgba(34, 197, 94, 0.22);
+  background: rgba(21, 128, 61, 0.12);
+}
+
+.skill-attachment-chip--empty {
+  border-color: rgba(245, 158, 11, 0.22);
+  background: rgba(180, 83, 9, 0.12);
+}
+
+.skill-attachment-chip--failed {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(127, 29, 29, 0.16);
 }
 
 .chat-header {
@@ -6295,6 +6820,16 @@ watch(
   .welcome-screen__actions {
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .attachment-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .skill-attachment-chip {
+    max-width: 100%;
   }
 
   .results-content {
