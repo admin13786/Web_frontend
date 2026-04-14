@@ -38,6 +38,7 @@ export function createEmptyConversation(title = '新对话', mode = 'workshop') 
     createdAt: now,
     updatedAt: now,
     messages: [],
+    selectedSkills: [],
     preview: {
       mode: 'empty',
       html: '',

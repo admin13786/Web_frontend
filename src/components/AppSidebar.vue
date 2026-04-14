@@ -1,12 +1,19 @@
 ﻿<template>
   <aside class="app-sidebar" :class="{ 'app-sidebar--mobile-open': isMobileOpen }">
     <div class="app-sidebar__brand">
-      <div class="brand-mark"><img :src="brandLogoSrc" alt="CogniMatrix" class="brand-mark__image" /></div>
+      <div class="brand-mark">
+        <img :src="brandLogoSrc" alt="CogniMatrix" class="brand-mark__image" />
+      </div>
       <div>
         <div class="brand-title">Education</div>
         <div class="brand-subtitle">内容工作台</div>
       </div>
-      <button type="button" class="mobile-close-btn" @click="$emit('close-mobile')">×</button>
+      <button type="button" class="mobile-close-btn" @click="$emit('close-mobile')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
     </div>
 
     <nav class="app-sidebar__nav">
@@ -24,7 +31,14 @@
     </nav>
 
     <section class="app-sidebar__panel">
-      <button type="button" class="workshop-history-create" @click="goToWelcomePage">新对话</button>
+      <button type="button" class="workshop-history-create" @click="goToWelcomePage">
+        <span class="workshop-history-create__icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </span>
+        <span>新对话</span>
+      </button>
       <div class="workshop-history">
         <div class="workshop-history__title">近期对话</div>
         <div class="workshop-history__list">
@@ -37,8 +51,8 @@
             <button type="button" class="workshop-history__item-main" @click="openConversation(item.id)">
               <span class="workshop-history__item-title">{{ item.title || '新对话' }}</span>
               <span class="workshop-history__item-meta">
-                <span class="workshop-history__item-time">{{ formatConversationTime(item.updatedAt) }}</span>
                 <span class="workshop-history__item-mode">{{ conversationModeLabel(item) }}</span>
+                <span class="workshop-history__item-tokens">{{ formatTokenCount(getConversationTokenTotal(item.id)) }} tokens</span>
               </span>
             </button>
             <button
@@ -49,7 +63,13 @@
               aria-label="删除对话"
               @click.stop="requestRemoveConversation(item.id)"
             >
-              ×
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
             </button>
           </div>
           <div v-if="!pagedConversations.length" class="workshop-history__empty">暂无近期对话</div>
@@ -78,6 +98,7 @@
       <div class="user-meta">
         <div class="user-label">当前用户</div>
         <div class="user-name">{{ userName }}</div>
+        <div class="user-token-total">总 Token {{ formatTokenCount(userTokenTotal) }}</div>
       </div>
       <button type="button" class="logout-btn" @click="logout">退出登录</button>
     </div>
@@ -234,6 +255,8 @@ import {
   createWorkshopSkillFromLocalZip,
   createWorkshopSkillFromZip,
   deleteWorkshopSkill,
+  fetchAgentDoConversationTokenUsage,
+  fetchAgentDoUserTokenUsage,
   fetchWorkshopLocalZipFiles,
   fetchWorkshopSkillVersion,
   fetchWorkshopSkills,
@@ -263,6 +286,8 @@ const router = useRouter()
 const route = useRoute()
 const currentUser = getCurrentUser()
 const conversations = ref([])
+const conversationTokenTotals = ref({})
+const userTokenTotal = ref(0)
 const deleteConversationModalOpen = ref(false)
 const pendingDeleteConversationId = ref('')
 const page = ref(0)
@@ -338,9 +363,62 @@ function syncPageByConversationId(id) {
   const idx = filteredConversations.value.findIndex((item) => item.id === id)
   clampPage(idx < 0 ? page.value : Math.floor(idx / PER_PAGE))
 }
+function formatTokenCount(value) {
+  const count = Number(value || 0)
+  if (!Number.isFinite(count) || count <= 0) return '0'
+  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}K`
+  return String(Math.round(count))
+}
+
+function getConversationTokenTotal(conversationId) {
+  return Number(conversationTokenTotals.value[String(conversationId || '')] || 0)
+}
+
+async function loadUserTokenUsage() {
+  const username = String(currentUser?.username || 'workshop_guest').trim()
+  if (!username) {
+    userTokenTotal.value = 0
+    return
+  }
+  try {
+    const payload = await fetchAgentDoUserTokenUsage(username)
+    userTokenTotal.value = Number(payload?.tokenUsage?.total_tokens || 0)
+  } catch (error) {
+    console.error('load workshop user token usage failed:', error)
+    userTokenTotal.value = 0
+  }
+}
+
+async function loadConversationTokenUsage(items) {
+  const username = String(currentUser?.username || 'workshop_guest').trim()
+  if (!username) {
+    conversationTokenTotals.value = {}
+    return
+  }
+
+  const nextTotals = {}
+  await Promise.all(
+    (Array.isArray(items) ? items : []).map(async (item) => {
+      const conversationId = String(item?.id || '').trim()
+      if (!conversationId) return
+      try {
+        const payload = await fetchAgentDoConversationTokenUsage({
+          username,
+          conversationId,
+        })
+        nextTotals[conversationId] = Number(payload?.tokenUsage?.total_tokens || 0)
+      } catch (error) {
+        console.error(`load conversation token usage failed: ${conversationId}`, error)
+        nextTotals[conversationId] = 0
+      }
+    })
+  )
+  conversationTokenTotals.value = nextTotals
+}
+
 function emitWorkshopHistoryChanged() { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('workshop-history-changed')) }
 function clearPendingDelete() { pendingDeleteConversationId.value = '' }
-function formatConversationTime(raw) { if (!raw) return ''; const d = new Date(raw); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }
 function handleWorkshopHistoryChanged() { loadWorkshopHistory() }
 
 function loadStoredSkillSelection() {
@@ -717,8 +795,21 @@ async function toggleSkillStatus(item) { try { await patchWorkshopSkillStatus(it
 async function removeSkill(item) { if (typeof window !== 'undefined' && !window.confirm(`确认删除 Skill「${item.name}」吗？`)) return; try { await deleteWorkshopSkill(item.id); await loadSkills() } catch (error) { skillError.value = error instanceof Error ? error.message : String(error) } }
 
 async function loadWorkshopHistory() {
-  try { conversations.value = await fetchWorkshopConversations(); syncPageByConversationId(activeConversationId.value) }
-  catch (error) { console.error('load workshop sidebar conversations failed:', error); conversations.value = []; clampPage(0) }
+  try {
+    const items = await fetchWorkshopConversations()
+    conversations.value = items
+    await Promise.all([
+      loadConversationTokenUsage(items),
+      loadUserTokenUsage(),
+    ])
+    syncPageByConversationId(activeConversationId.value)
+  } catch (error) {
+    console.error('load workshop sidebar conversations failed:', error)
+    conversations.value = []
+    conversationTokenTotals.value = {}
+    userTokenTotal.value = 0
+    clampPage(0)
+  }
 }
 
 function openConversation(id) {
@@ -802,10 +893,8 @@ onBeforeUnmount(() => {
 .workshop-history__item--active { background: rgba(99, 102, 241, 0.14); border-color: rgba(129, 140, 248, 0.2); }
 .workshop-history__item-main { flex: 1; min-width: 0; border: none; background: transparent; color: inherit; text-align: left; padding: 10px 12px; cursor: pointer; }
 .workshop-history__delete { width: 28px; margin: 6px 6px 6px 0; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
-.workshop-history__item-title, .workshop-history__item-time { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workshop-history__item-title { font-size: 0.84rem; font-weight: 700; }
 .workshop-history__item-meta { margin-top: 4px; display: flex; align-items: center; gap: 6px; }
-.workshop-history__item-time { font-size: 0.7rem; color: var(--text-muted); }
 .workshop-history__item-mode { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--bg-glass-border); background: var(--bg-elevated); color: var(--text-secondary); font-size: 0.66rem; line-height: 1; white-space: nowrap; }
 .workshop-history__empty { padding: 12px; border-radius: 10px; background: var(--bg-muted); color: var(--text-muted); font-size: 0.76rem; text-align: center; }
 .workshop-history__pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
@@ -855,6 +944,16 @@ onBeforeUnmount(() => {
 .skill-viewer-pre { margin: 0; max-height: 58vh; overflow: auto; border: 1px solid var(--bg-glass-border); border-radius: 10px; background: var(--bg-muted); color: var(--text-primary); padding: 12px; font-size: 0.78rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .skill-inline-btn { border: 1px solid var(--bg-glass-border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 8px; padding: 6px 10px; font-size: 0.74rem; cursor: pointer; }
 .skill-inline-btn--danger { border-color: rgba(248, 113, 113, 0.35); color: #fecaca; background: rgba(127, 29, 29, 0.18); }
+.workshop-history-create { display: flex; align-items: center; gap: 10px; }
+.workshop-history-create__icon { width: 28px; height: 28px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; color: var(--sidebar-create-icon-color); background: var(--sidebar-create-icon-bg); transition: color var(--transition-fast), background var(--transition-fast); }
+.workshop-history__delete { width: 34px; flex-shrink: 0; margin: 6px 6px 6px 0; border: none; border-radius: 12px; background: transparent; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--transition-fast), visibility var(--transition-fast), background var(--transition-fast), color var(--transition-fast); }
+.workshop-history__item--active .workshop-history__delete, .workshop-history__item:hover .workshop-history__delete, .workshop-history__item:focus-within .workshop-history__delete { opacity: 1; visibility: visible; pointer-events: auto; }
+.workshop-history__item--active .workshop-history__delete { background: rgba(86, 90, 129, 0.55); color: #f4f4f5; }
+.workshop-history__item--active .workshop-history__delete:hover { background: rgba(99, 103, 150, 0.75); color: #fff; }
+.workshop-history__delete:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.workshop-history__item-title, .workshop-history__item-tokens { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workshop-history__item-tokens { flex-shrink: 0; font-size: 0.72rem; font-weight: 700; color: var(--sidebar-icon-active-color); }
+.user-token-total { margin-top: 4px; font-size: 0.76rem; font-weight: 700; color: var(--sidebar-icon-active-color); }
 @media (max-width: 960px) { .app-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; transform: translateX(-100%); transition: transform var(--transition-smooth); } .app-sidebar--mobile-open { transform: translateX(0); } .mobile-close-btn { display: inline-flex; } }
 </style>
 

@@ -183,15 +183,16 @@
                 rows="1"
                 @keydown.enter.exact.prevent="sendMessage"
                 @input="autoResize"
+                @paste="handleComposerPaste"
                 ref="textareaEl"
               ></textarea>
               <div
-                v-if="isSkillAssistantMode && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
+                v-if="(isSkillAssistantMode || isWorkshopMode) && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
                 class="skill-attachment-panel skill-attachment-panel--welcome"
               >
                 <div v-if="attachmentUploadError" class="skill-attachment-panel__error">{{ attachmentUploadError }}</div>
                 <div v-if="pendingAttachments.length" class="skill-attachment-group">
-                  <div class="skill-attachment-group__title">待上传附件</div>
+                  <div class="skill-attachment-group__title">{{ currentAttachmentPendingLabel }}</div>
                   <div class="skill-attachment-list">
                     <div
                       v-for="item in pendingAttachments"
@@ -214,7 +215,7 @@
                   </div>
                 </div>
                 <div v-if="uploadedAttachments.length" class="skill-attachment-group">
-                  <div class="skill-attachment-group__title">已上传附件</div>
+                  <div class="skill-attachment-group__title">{{ currentAttachmentUploadedLabel }}</div>
                   <div class="skill-attachment-list">
                     <div
                       v-for="item in uploadedAttachments"
@@ -234,7 +235,7 @@
               </div>
               <div class="welcome-screen__actions">
                 <button
-                  v-if="isSkillAssistantMode"
+                  v-if="isSkillAssistantMode || isWorkshopMode"
                   type="button"
                   class="attachment-btn attachment-btn--welcome"
                   :disabled="busy || attachmentUploading"
@@ -243,7 +244,7 @@
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.2a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.48-8.48"/>
                   </svg>
-                  <span>{{ attachmentUploading ? '上传中...' : '上传文件' }}</span>
+                  <span>{{ attachmentUploading ? '上传中...' : currentAttachmentButtonLabel }}</span>
                 </button>
                 <div
                   v-if="!isSkillAssistantMode"
@@ -505,10 +506,11 @@
           rows="1"
           @keydown.enter.exact.prevent="sendMessage"
           @input="autoResize"
+          @paste="handleComposerPaste"
           ref="textareaEl"
         ></textarea>
         <button
-          v-if="isSkillAssistantMode"
+          v-if="isSkillAssistantMode || isWorkshopMode"
           type="button"
           class="attachment-btn"
           :disabled="busy || attachmentUploading"
@@ -517,7 +519,7 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.2a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.48-8.48"/>
           </svg>
-          <span>{{ attachmentUploading ? '上传中...' : '上传文件' }}</span>
+          <span>{{ attachmentUploading ? '上传中...' : currentAttachmentButtonLabel }}</span>
         </button>
         <div v-if="!isSkillAssistantMode" class="mode-switch" role="tablist" aria-label="生成模式">
           <button
@@ -546,12 +548,12 @@
         </button>
       </div>
       <div
-        v-if="isSkillAssistantMode && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
+        v-if="(isSkillAssistantMode || isWorkshopMode) && (pendingAttachments.length || uploadedAttachments.length || attachmentUploadError)"
         class="skill-attachment-panel skill-attachment-panel--chat"
       >
         <div v-if="attachmentUploadError" class="skill-attachment-panel__error">{{ attachmentUploadError }}</div>
         <div v-if="pendingAttachments.length" class="skill-attachment-group">
-          <div class="skill-attachment-group__title">待上传附件</div>
+          <div class="skill-attachment-group__title">{{ currentAttachmentPendingLabel }}</div>
           <div class="skill-attachment-list">
             <div
               v-for="item in pendingAttachments"
@@ -574,7 +576,7 @@
           </div>
         </div>
         <div v-if="uploadedAttachments.length" class="skill-attachment-group">
-          <div class="skill-attachment-group__title">已上传附件</div>
+          <div class="skill-attachment-group__title">{{ currentAttachmentUploadedLabel }}</div>
           <div class="skill-attachment-list">
             <div
               v-for="item in uploadedAttachments"
@@ -650,10 +652,9 @@
           <div v-else-if="workspaceTreeLoading && !workspaceTreeRoot" class="workspace-browser-empty">正在加载文件目录…</div>
           <div v-else-if="!workspaceFlatNodes.length" class="workspace-browser-empty">当前会话还没有可浏览的文件。</div>
           <div v-else class="workspace-tree">
-            <button
+            <div
               v-for="node in workspaceFlatNodes"
               :key="node.path || `dir-${node.name}`"
-              type="button"
               class="workspace-tree-node"
               :class="[
                 `node-${node.type}`,
@@ -663,25 +664,44 @@
                 },
               ]"
               :style="{ paddingLeft: `${14 + node.depth * 18}px` }"
-              @click="handleWorkspaceNodeClick(node)"
             >
-              <span class="workspace-tree-caret">
-                <svg
-                  v-if="node.type === 'directory'"
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  :class="{ open: isDirectoryExpanded(node.path) }"
-                >
-                  <polyline points="8 4 16 12 8 20"/>
+              <button
+                type="button"
+                class="workspace-tree-main"
+                @click="handleWorkspaceNodeClick(node)"
+              >
+                <span class="workspace-tree-caret">
+                  <svg
+                    v-if="node.type === 'directory'"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    :class="{ open: isDirectoryExpanded(node.path) }"
+                  >
+                    <polyline points="8 4 16 12 8 20"/>
+                  </svg>
+                </span>
+                <span class="workspace-tree-icon">{{ node.type === 'directory' ? '📁' : fileIcon(node.path) }}</span>
+                <span class="workspace-tree-label" :title="node.name">{{ node.name }}</span>
+              </button>
+              <button
+                v-if="node.type === 'file'"
+                type="button"
+                class="workspace-node-download"
+                :title="`下载 ${node.name}`"
+                :aria-label="`下载 ${node.name}`"
+                @click="downloadWorkspaceFile(node.path)"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 3v12"/>
+                  <path d="m7 10 5 5 5-5"/>
+                  <path d="M5 21h14"/>
                 </svg>
-              </span>
-              <span class="workspace-tree-icon">{{ node.type === 'directory' ? '📁' : fileIcon(node.path) }}</span>
-              <span class="workspace-tree-label">{{ node.name }}</span>
-            </button>
+              </button>
+            </div>
           </div>
         </aside>
 
@@ -712,6 +732,14 @@
                 <div class="file-viewer-title">{{ workspaceSelectedFile.name || '选择文件' }}</div>
                 <div class="file-viewer-subtitle">{{ workspaceSelectedFile.path || '从左侧目录中选择一个文件查看内容。' }}</div>
               </div>
+              <button
+                v-if="workspaceSelectedFile.path"
+                type="button"
+                class="workspace-refresh-btn"
+                @click="downloadWorkspaceFile(workspaceSelectedFile.path)"
+              >
+                下载文件
+              </button>
               <button
                 v-if="workspaceSelectedFile.path"
                 type="button"
@@ -923,7 +951,7 @@
       ref="attachmentInputEl"
       type="file"
       class="skill-attachment-input"
-      :accept="SKILL_ATTACHMENT_ACCEPT"
+      :accept="currentAttachmentAccept"
       multiple
       @change="handleAttachmentInputChange"
     />
@@ -938,13 +966,14 @@ import { logout as logoutApi } from '../api/auth.js'
 import {
   ensureAgentDoSessionMapping,
   // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
+  getAgentDoWorkspaceDownloadUrl,
   fetchAgentDoWorkspaceFile,
   fetchAgentDoWorkspaceTree,
   normalizeWorkshopPreviewUrl,
   restoreAgentDoSessionMapping,
   streamGenerateText,
   streamPreviewWithAgentDo,
-  uploadSkillAssistantFiles,
+  uploadConversationFiles,
   uploadHTML,
 } from '../api/workshop.js'
 import {
@@ -965,12 +994,15 @@ const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
 const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
-const SKILL_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.md', '.txt'])
-const SKILL_ATTACHMENT_MAX_FILES = 5
-const SKILL_ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024
-const SKILL_ATTACHMENT_MAX_TOTAL_SIZE = 25 * 1024 * 1024
-const SKILL_ATTACHMENT_ACCEPT = '.pdf,.docx,.md,.txt'
-const SKILL_ATTACHMENT_DEFAULT_PROMPT = '请先读取我刚上传的文件，概括重点，并告诉我接下来你能如何帮助我。'
+const DOCUMENT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.md', '.txt'])
+const IMAGE_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
+const ATTACHMENT_MAX_FILES = 5
+const ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024
+const ATTACHMENT_MAX_TOTAL_SIZE = 25 * 1024 * 1024
+const DOCUMENT_ATTACHMENT_ACCEPT = '.pdf,.docx,.md,.txt'
+const IMAGE_ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif'
+const DOCUMENT_ATTACHMENT_DEFAULT_PROMPT = '请先读取我刚上传的文件，概括重点，并告诉我接下来你能如何帮助我。'
+const IMAGE_ATTACHMENT_DEFAULT_PROMPT = '请先分析我刚上传的图片，并据此生成或修改当前页面。'
 const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
@@ -980,12 +1012,28 @@ const mobilePane = ref('chat')
 const mobileSidebarOpen = ref(false)
 const selectedSkillMetas = ref([])
 
+function normalizeSkillMeta(item) {
+  const normalized = {
+    id: String(item?.id || '').trim(),
+    name: String(item?.name || '').trim(),
+    version: String(item?.version || '').trim(),
+  }
+  return normalized.id ? normalized : null
+}
+
+function normalizeSkillMetaList(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((item) => normalizeSkillMeta(item))
+    .filter(Boolean)
+}
+
 function normalizeFunctionMode(mode) {
   return String(mode || '').trim() === 'skill_assistant' ? 'skill_assistant' : 'workshop'
 }
 
 const currentFunctionMode = computed(() => normalizeFunctionMode(route.query.fm))
 const isSkillAssistantMode = computed(() => currentFunctionMode.value === 'skill_assistant')
+const isWorkshopMode = computed(() => currentFunctionMode.value === 'workshop')
 const selectedSkillIds = computed(() => selectedSkillMetas.value.map((item) => item.id).filter(Boolean))
 const attachmentInputEl = ref(null)
 const pendingAttachments = ref([])
@@ -994,37 +1042,103 @@ const attachmentUploading = ref(false)
 const attachmentUploadError = ref('')
 let attachmentSelectionSeq = 0
 
-function loadStoredSkillSelection() {
+const currentAttachmentAllowedExtensions = computed(() => (
+  isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_ALLOWED_EXTENSIONS : IMAGE_ATTACHMENT_ALLOWED_EXTENSIONS
+))
+const currentAttachmentAccept = computed(() => (
+  isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_ACCEPT : IMAGE_ATTACHMENT_ACCEPT
+))
+const currentAttachmentButtonLabel = computed(() => (
+  isSkillAssistantMode.value ? '上传文件' : '上传图片'
+))
+const currentAttachmentPendingLabel = computed(() => (
+  isSkillAssistantMode.value ? '待上传附件' : '待上传图片'
+))
+const currentAttachmentUploadedLabel = computed(() => (
+  isSkillAssistantMode.value ? '已上传附件' : '已上传图片'
+))
+const currentAttachmentDefaultPrompt = computed(() => (
+  isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_DEFAULT_PROMPT : IMAGE_ATTACHMENT_DEFAULT_PROMPT
+))
+
+function clearLegacyStoredSkillSelection() {
   if (typeof window === 'undefined') return
-  const raw = window.localStorage.getItem(WORKSHOP_SKILL_STORAGE_KEY)
-  if (!raw) {
-    selectedSkillMetas.value = []
-    return
+  window.localStorage.removeItem(WORKSHOP_SKILL_STORAGE_KEY)
+}
+
+function getConversationById(conversationId) {
+  const normalizedConversationId = String(conversationId || '').trim()
+  if (!normalizedConversationId) return null
+  return conversationList.value.find((item) => item.id === normalizedConversationId) || null
+}
+
+function updateConversationById(conversationId, updater) {
+  const normalizedConversationId = String(conversationId || '').trim()
+  if (!normalizedConversationId || typeof updater !== 'function') return null
+  const index = conversationList.value.findIndex((item) => item.id === normalizedConversationId)
+  if (index === -1) return null
+  const currentConversation = conversationList.value[index]
+  const nextConversation = updater(currentConversation)
+  if (!nextConversation) return null
+  const nextList = [...conversationList.value]
+  nextList[index] = nextConversation
+  conversationList.value = nextList
+  return nextConversation
+}
+
+function isCurrentConversation(conversationId) {
+  return String(conversationId || '').trim() === String(currentConversationId.value || '').trim()
+}
+
+function normalizeConversationRecord(conversation) {
+  const preview = conversation?.preview || {}
+  return {
+    ...conversation,
+    conversationMode: normalizeFunctionMode(conversation?.conversationMode || currentFunctionMode.value),
+    selectedSkills: normalizeSkillMetaList(conversation?.selectedSkills),
+    preview: {
+      ...preview,
+      code: {
+        lang: preview?.code?.lang || '',
+        content: preview?.code?.content || '',
+      },
+      attachments: mergeUploadedAttachmentRecords([], preview?.attachments || []),
+    },
   }
+}
+
+async function persistConversationRecordById(conversationId) {
+  const normalizedConversationId = String(conversationId || '').trim()
+  if (!normalizedConversationId || deletedConversationIds.has(normalizedConversationId)) return null
+  const conversation = getConversationById(normalizedConversationId)
+  if (!conversation) return null
+  const snapshot = normalizeConversationRecord(conversation)
+  const shouldPersist = hasMeaningfulConversationContent(snapshot) || snapshot.orderIndex != null
+  if (!shouldPersist) return snapshot
   try {
-    const parsed = JSON.parse(raw)
-    const list = Array.isArray(parsed?.skills) ? parsed.skills : []
-    selectedSkillMetas.value = list
-      .map((item) => ({
-        id: String(item?.id || '').trim(),
-        name: String(item?.name || '').trim(),
-        version: String(item?.version || '').trim(),
-      }))
-      .filter((item) => item.id)
-  } catch {
-    selectedSkillMetas.value = []
+    const saved = await saveWorkshopConversation(snapshot)
+    if (deletedConversationIds.has(saved.id)) return saved
+    updateConversationById(saved.id, (item) => normalizeConversationRecord({
+      ...item,
+      ...saved,
+    }))
+    return saved
+  } catch (error) {
+    console.error('persist conversation record failed:', error)
+    return snapshot
   }
 }
 
 function handleSkillSelectionChanged(event) {
-  const list = Array.isArray(event?.detail?.skills) ? event.detail.skills : []
-  selectedSkillMetas.value = list
-    .map((item) => ({
-      id: String(item?.id || '').trim(),
-      name: String(item?.name || '').trim(),
-      version: String(item?.version || '').trim(),
-    }))
-    .filter((item) => item.id)
+  const nextSkills = normalizeSkillMetaList(event?.detail?.skills)
+  selectedSkillMetas.value = nextSkills
+  if (!currentConversationId.value) return
+  updateConversationById(currentConversationId.value, (item) => normalizeConversationRecord({
+    ...item,
+    selectedSkills: nextSkills,
+    updatedAt: new Date().toISOString(),
+  }))
+  schedulePersist()
 }
 
 function getAttachmentExtension(name) {
@@ -1044,6 +1158,7 @@ function formatAttachmentSize(size) {
 function normalizeUploadedAttachmentRecord(item) {
   return {
     id: String(item?.id || '').trim(),
+    attachmentType: String(item?.attachmentType || '').trim() || 'document',
     originalName: String(item?.originalName || '').trim() || String(item?.safeName || '').trim() || '未命名文件',
     safeName: String(item?.safeName || '').trim(),
     extension: String(item?.extension || '').trim().toLowerCase(),
@@ -1078,6 +1193,8 @@ function mergeUploadedAttachmentRecords(existing, incoming) {
 
 function attachmentStatusText(item) {
   const status = String(item?.extractionStatus || '').trim().toLowerCase()
+  const attachmentType = String(item?.attachmentType || '').trim().toLowerCase()
+  if (attachmentType === 'image' && status === 'not_applicable') return '已上传，Claude 可直接读取'
   if (status === 'failed') return '提取失败'
   if (status === 'empty') return '已上传，提取为空'
   return '上传成功'
@@ -1097,7 +1214,7 @@ function resetAttachmentInput() {
 }
 
 function openAttachmentPicker() {
-  if (!isSkillAssistantMode.value || busy.value || attachmentUploading.value) return
+  if ((!isSkillAssistantMode.value && !isWorkshopMode.value) || busy.value || attachmentUploading.value) return
   attachmentInputEl.value?.click()
 }
 
@@ -1120,28 +1237,53 @@ function buildPendingAttachmentRecord(file) {
   }
 }
 
+function appendPendingAttachments(files) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
+  if (!normalizedFiles.length) return false
+
+  const validationMessage = validatePendingAttachmentFiles(normalizedFiles)
+  if (validationMessage) {
+    attachmentUploadError.value = validationMessage
+    return false
+  }
+
+  const existingKeys = new Set(
+    pendingAttachments.value.map((item) => `${item.name}|${item.size}|${item.lastModified}`),
+  )
+  const nextPending = [...pendingAttachments.value]
+  for (const file of normalizedFiles) {
+    const dedupeKey = `${String(file?.name || '').trim()}|${Number(file?.size || 0)}|${Number(file?.lastModified || 0)}`
+    if (existingKeys.has(dedupeKey)) continue
+    existingKeys.add(dedupeKey)
+    nextPending.push(buildPendingAttachmentRecord(file))
+  }
+  pendingAttachments.value = nextPending
+  attachmentUploadError.value = ''
+  return true
+}
+
 function validatePendingAttachmentFiles(files) {
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
   if (!normalizedFiles.length) return ''
 
   const nextCount = pendingAttachments.value.length + normalizedFiles.length
-  if (nextCount > SKILL_ATTACHMENT_MAX_FILES) {
-    return `最多只能选择 ${SKILL_ATTACHMENT_MAX_FILES} 个附件`
+  if (nextCount > ATTACHMENT_MAX_FILES) {
+    return `最多只能选择 ${ATTACHMENT_MAX_FILES} 个${isSkillAssistantMode.value ? '附件' : '图片'}`
   }
 
   let totalSize = pendingAttachments.value.reduce((sum, item) => sum + Number(item?.size || 0), 0)
   for (const file of normalizedFiles) {
     const extension = getAttachmentExtension(file?.name)
-    if (!SKILL_ATTACHMENT_ALLOWED_EXTENSIONS.has(extension)) {
+    if (!currentAttachmentAllowedExtensions.value.has(extension)) {
       return `不支持的文件类型：${extension || String(file?.name || '未知文件')}`
     }
     const size = Number(file?.size || 0)
-    if (size > SKILL_ATTACHMENT_MAX_FILE_SIZE) {
-      return `文件过大：${file.name}（单文件最大 ${formatAttachmentSize(SKILL_ATTACHMENT_MAX_FILE_SIZE)}）`
+    if (size > ATTACHMENT_MAX_FILE_SIZE) {
+      return `文件过大：${file.name}（单文件最大 ${formatAttachmentSize(ATTACHMENT_MAX_FILE_SIZE)}）`
     }
     totalSize += size
-    if (totalSize > SKILL_ATTACHMENT_MAX_TOTAL_SIZE) {
-      return `附件总大小超过限制（最大 ${formatAttachmentSize(SKILL_ATTACHMENT_MAX_TOTAL_SIZE)}）`
+    if (totalSize > ATTACHMENT_MAX_TOTAL_SIZE) {
+      return `${isSkillAssistantMode.value ? '附件' : '图片'}总大小超过限制（最大 ${formatAttachmentSize(ATTACHMENT_MAX_TOTAL_SIZE)}）`
     }
   }
 
@@ -1153,24 +1295,45 @@ function handleAttachmentInputChange(event) {
   resetAttachmentInput()
   if (!rawFiles.length) return
 
-  const validationMessage = validatePendingAttachmentFiles(rawFiles)
-  if (validationMessage) {
-    attachmentUploadError.value = validationMessage
+  appendPendingAttachments(rawFiles)
+}
+
+function createPastedImageFile(file) {
+  const source = file instanceof File ? file : new File([file], 'pasted-image.png', { type: file?.type || 'image/png' })
+  const normalizedType = String(source.type || '').trim() || 'image/png'
+  const normalizedName = String(source.name || '').trim()
+  if (normalizedName) return source
+
+  const extension = normalizedType.split('/')[1]?.replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'png'
+  return new File([source], `pasted-image-${Date.now()}-${attachmentSelectionSeq + 1}.${extension}`, {
+    type: normalizedType,
+    lastModified: Date.now(),
+  })
+}
+
+function handleComposerPaste(event) {
+  const clipboardData = event?.clipboardData
+  if (!clipboardData) return
+
+  const imageItems = Array.from(clipboardData.items || []).filter(
+    (item) => String(item?.type || '').startsWith('image/'),
+  )
+  if (!imageItems.length) return
+
+  if (!isWorkshopMode.value) {
+    attachmentUploadError.value = '当前模式仅支持文档附件，请切换到创意工坊或使用上传文件'
     return
   }
 
-  const existingKeys = new Set(
-    pendingAttachments.value.map((item) => `${item.name}|${item.size}|${item.lastModified}`),
-  )
-  const nextPending = [...pendingAttachments.value]
-  for (const file of rawFiles) {
-    const dedupeKey = `${String(file?.name || '').trim()}|${Number(file?.size || 0)}|${Number(file?.lastModified || 0)}`
-    if (existingKeys.has(dedupeKey)) continue
-    existingKeys.add(dedupeKey)
-    nextPending.push(buildPendingAttachmentRecord(file))
-  }
-  pendingAttachments.value = nextPending
-  attachmentUploadError.value = ''
+  const pastedFiles = imageItems
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
+    .map((file) => createPastedImageFile(file))
+
+  if (!pastedFiles.length) return
+
+  event.preventDefault()
+  appendPendingAttachments(pastedFiles)
 }
 
 // Layout / drag
@@ -1225,7 +1388,6 @@ const inputText = ref('')
 const isWelcomeScreen = computed(() => messages.value.length === 0 && !busy.value && !loading.value)
 const canSendCurrentMessage = computed(() => {
   if (busy.value || attachmentUploading.value) return false
-  if (!isSkillAssistantMode.value) return Boolean(inputText.value.trim())
   return Boolean(
     inputText.value.trim()
     || pendingAttachments.value.length
@@ -1383,14 +1545,18 @@ const workspaceSelectedFile = ref({
   size: 0,
 })
 
-const currentWorkspaceRequest = computed(() => {
+function buildWorkspaceRequest(conversationId = currentConversationId.value) {
   const username = currentUser.value?.username || 'workshop_guest'
-  const conversationId = currentConversationId.value || ''
+  const normalizedConversationId = String(conversationId || '').trim()
   return {
     username,
-    conversationId,
-    ready: Boolean(username && conversationId),
+    conversationId: normalizedConversationId,
+    ready: Boolean(username && normalizedConversationId),
   }
+}
+
+const currentWorkspaceRequest = computed(() => {
+  return buildWorkspaceRequest()
 })
 
 const workspaceBrowserSubtitle = computed(() => {
@@ -1483,6 +1649,8 @@ async function canAutoRecoverCurrentWorkspace() {
 }
 
 function resetWorkspaceBrowser() {
+  workspaceTreeRequestSeq += 1
+  workspaceFileRequestSeq += 1
   workspaceBootstrapLoading.value = false
   workspaceBootstrapError.value = ''
   workspaceTreeLoading.value = false
@@ -1537,98 +1705,182 @@ function fileIcon(path) {
   if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'TS'
   if (lower.endsWith('.json')) return 'JSON'
   if (lower.endsWith('.md')) return 'MD'
-  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg')) return 'IMG'
+  if (
+    lower.endsWith('.png')
+    || lower.endsWith('.jpg')
+    || lower.endsWith('.jpeg')
+    || lower.endsWith('.webp')
+    || lower.endsWith('.gif')
+    || lower.endsWith('.svg')
+  ) return 'IMG'
   return 'FILE'
 }
 
-let workspaceBootstrapInFlight = null
+const workspaceBootstrapInFlight = new Map()
+let workspaceTreeRequestSeq = 0
+let workspaceFileRequestSeq = 0
+let conversationApplySeq = 0
 
-function applyEnsuredSessionToConversation(mapping) {
-  const sessionId = String(mapping?.agentDoSessionId || '').trim()
-  const workspacePath = String(mapping?.workspacePath || '').trim()
-  if (!sessionId || !currentConversationId.value) return
-  agentDoDebug.value.sessionId = sessionId
-  agentDoDebug.value.workspacePath = workspacePath
-  conversationList.value = conversationList.value.map((item) => {
-    if (item.id !== currentConversationId.value) return item
+function getConversationSessionSnapshot(conversationId) {
+  const conversation = getConversationById(conversationId)
+  const preview = conversation?.preview || {}
+  if (isCurrentConversation(conversationId)) {
     return {
-      ...item,
-      preview: {
-        ...(item.preview || {}),
-        agentDoSessionId: sessionId,
-        workspacePath,
-      },
-      updatedAt: new Date().toISOString(),
+      agentDoSessionId: String(agentDoDebug.value.sessionId || preview.agentDoSessionId || '').trim(),
+      workspacePath: String(agentDoDebug.value.workspacePath || preview.workspacePath || '').trim(),
     }
-  })
-  schedulePersist()
+  }
+  return {
+    agentDoSessionId: String(preview.agentDoSessionId || '').trim(),
+    workspacePath: String(preview.workspacePath || '').trim(),
+  }
 }
 
-async function uploadPendingSkillAttachments() {
-  if (!pendingAttachments.value.length) return []
+function getConversationTitleById(conversationId) {
+  const conversation = getConversationById(conversationId)
+  if (isCurrentConversation(conversationId)) {
+    return String(chatTitle.value || conversation?.title || '').trim()
+  }
+  return String(conversation?.title || '').trim()
+}
+
+function applyEnsuredSessionToConversation(targetConversationId, mapping) {
+  const normalizedConversationId = String(targetConversationId || '').trim()
+  const sessionId = String(mapping?.agentDoSessionId || '').trim()
+  const workspacePath = String(mapping?.workspacePath || '').trim()
+  if (!sessionId || !normalizedConversationId) return
+  updateConversationById(normalizedConversationId, (item) => normalizeConversationRecord({
+    ...item,
+    preview: {
+      ...(item.preview || {}),
+      agentDoSessionId: sessionId,
+      workspacePath,
+    },
+    updatedAt: new Date().toISOString(),
+  }))
+  if (isCurrentConversation(normalizedConversationId)) {
+    agentDoDebug.value.sessionId = sessionId
+    agentDoDebug.value.workspacePath = workspacePath
+    schedulePersist()
+    return
+  }
+  void persistConversationRecordById(normalizedConversationId)
+}
+
+async function uploadPendingConversationAttachments(options = {}) {
+  const targetConversationId = String(options.conversationId || currentConversationId.value || '').trim()
+  const request = buildWorkspaceRequest(targetConversationId)
+  const filesToUpload = (Array.isArray(options.files) ? options.files : pendingAttachments.value)
+    .map((item) => item?.file || item)
+    .filter((item) => item instanceof File)
+  if (!filesToUpload.length || !request.ready) return []
+  const targetTitle = String(
+    options.title
+    || getConversationTitleById(targetConversationId)
+    || (isSkillAssistantMode.value ? 'Skill Assistant Session' : 'Workshop Project'),
+  ).trim()
 
   attachmentUploading.value = true
   attachmentUploadError.value = ''
 
   try {
-    const response = await uploadSkillAssistantFiles(
+    const response = await uploadConversationFiles(
       {
-        username: currentWorkspaceRequest.value.username,
-        conversationId: currentWorkspaceRequest.value.conversationId,
-        title: chatTitle.value || 'Skill Assistant Session',
+        username: request.username,
+        conversationId: request.conversationId,
+        title: targetTitle,
       },
-      pendingAttachments.value.map((item) => item.file),
+      filesToUpload,
     )
-    applyEnsuredSessionToConversation(response)
-    uploadedAttachments.value = mergeUploadedAttachmentRecords(uploadedAttachments.value, response?.files || [])
-    pendingAttachments.value = []
-    if (showWorkspaceFiles.value && currentWorkspaceRequest.value.ready) {
+    applyEnsuredSessionToConversation(targetConversationId, response)
+    const mergedAttachments = mergeUploadedAttachmentRecords(
+      getConversationById(targetConversationId)?.preview?.attachments || [],
+      response?.files || [],
+    )
+    updateConversationById(targetConversationId, (item) => normalizeConversationRecord({
+      ...item,
+      preview: {
+        ...(item.preview || {}),
+        attachments: mergedAttachments,
+      },
+      updatedAt: new Date().toISOString(),
+    }))
+    if (isCurrentConversation(targetConversationId)) {
+      uploadedAttachments.value = mergedAttachments
+      pendingAttachments.value = []
+    } else {
+      void persistConversationRecordById(targetConversationId)
+    }
+    if (showWorkspaceFiles.value && isCurrentConversation(targetConversationId) && request.ready) {
       await loadWorkspaceTree(true)
     }
     return Array.isArray(response?.files) ? response.files : []
   } catch (error) {
-    attachmentUploadError.value = error instanceof Error ? error.message : String(error)
+    if (isCurrentConversation(targetConversationId)) {
+      attachmentUploadError.value = error instanceof Error ? error.message : String(error)
+    }
     throw error
   } finally {
     attachmentUploading.value = false
   }
 }
 
-async function ensureSkillAssistantWorkspaceReady(options = {}) {
-  const { force = false, silent = false } = options
-  if (!isSkillAssistantMode.value) return true
-  if (!currentWorkspaceRequest.value.ready) return false
-  if (!force && agentDoDebug.value.sessionId) return true
-  if (workspaceBootstrapInFlight) return workspaceBootstrapInFlight
+async function ensureConversationWorkspaceReady(options = {}) {
+  const {
+    force = false,
+    silent = false,
+    conversationId: explicitConversationId = '',
+    title: explicitTitle = '',
+  } = options
+  const targetConversationId = String(explicitConversationId || currentConversationId.value || '').trim()
+  const workspaceRequest = buildWorkspaceRequest(targetConversationId)
+  if (!isSkillAssistantMode.value && !isWorkshopMode.value) return true
+  if (!workspaceRequest.ready) return false
+  if (!force && getConversationSessionSnapshot(targetConversationId).agentDoSessionId) return true
+  const existingPromise = workspaceBootstrapInFlight.get(targetConversationId)
+  if (existingPromise) return existingPromise
 
-  workspaceBootstrapLoading.value = true
-  if (!silent) workspaceBootstrapError.value = ''
+  if (isCurrentConversation(targetConversationId)) {
+    workspaceBootstrapLoading.value = true
+    if (!silent) workspaceBootstrapError.value = ''
+  }
 
-  workspaceBootstrapInFlight = (async () => {
+  const inFlightPromise = (async () => {
     try {
       const ensured = await ensureAgentDoSessionMapping({
-        username: currentWorkspaceRequest.value.username,
-        conversationId: currentWorkspaceRequest.value.conversationId,
-        title: chatTitle.value || 'Skill Assistant Session',
+        username: workspaceRequest.username,
+        conversationId: workspaceRequest.conversationId,
+        title:
+          String(explicitTitle || getConversationTitleById(targetConversationId) || '').trim()
+          || (isSkillAssistantMode.value ? 'Skill Assistant Session' : 'Workshop Project'),
       })
-      applyEnsuredSessionToConversation(ensured)
-      workspaceBootstrapError.value = ''
+      applyEnsuredSessionToConversation(targetConversationId, ensured)
+      if (isCurrentConversation(targetConversationId)) {
+        workspaceBootstrapError.value = ''
+      }
       return true
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const friendly = `工作区初始化失败（${message}），可点击刷新重试`
-      workspaceBootstrapError.value = friendly
-      if (!silent) {
+      if (isCurrentConversation(targetConversationId)) {
+        workspaceBootstrapError.value = friendly
+      }
+      if (!silent && isCurrentConversation(targetConversationId)) {
         workspaceTreeError.value = friendly
       }
       return false
     } finally {
-      workspaceBootstrapLoading.value = false
-      workspaceBootstrapInFlight = null
+      if (workspaceBootstrapInFlight.get(targetConversationId) === inFlightPromise) {
+        workspaceBootstrapInFlight.delete(targetConversationId)
+      }
+      if (isCurrentConversation(targetConversationId)) {
+        workspaceBootstrapLoading.value = false
+      }
     }
   })()
+  workspaceBootstrapInFlight.set(targetConversationId, inFlightPromise)
 
-  return workspaceBootstrapInFlight
+  return inFlightPromise
 }
 
 function findFirstFileNode(node) {
@@ -1642,15 +1894,20 @@ function findFirstFileNode(node) {
 }
 
 async function loadWorkspaceTree(force = false) {
-  if (!currentWorkspaceRequest.value.ready) return
+  const targetConversationId = String(currentConversationId.value || '').trim()
+  const workspaceRequest = buildWorkspaceRequest(targetConversationId)
+  if (!workspaceRequest.ready) return
   if (workspaceTreeLoading.value) return
   if (workspaceTreeRoot.value && !force) return
+  const requestSeq = ++workspaceTreeRequestSeq
 
-  const workspaceReady = await ensureSkillAssistantWorkspaceReady({
+  const workspaceReady = await ensureConversationWorkspaceReady({
     force,
     silent: !showWorkspaceFiles.value,
+    conversationId: targetConversationId,
   })
-  if (isSkillAssistantMode.value && !workspaceReady) {
+  if (requestSeq !== workspaceTreeRequestSeq || !isCurrentConversation(targetConversationId)) return
+  if ((isSkillAssistantMode.value || isWorkshopMode.value) && !workspaceReady) {
     if (!showWorkspaceFiles.value) return
     workspaceTreeError.value = workspaceBootstrapError.value || '工作区初始化失败，可点击刷新重试'
     return
@@ -1659,7 +1916,8 @@ async function loadWorkspaceTree(force = false) {
   workspaceTreeLoading.value = true
   workspaceTreeError.value = ''
   try {
-    const data = await fetchAgentDoWorkspaceTree(currentWorkspaceRequest.value)
+    const data = await fetchAgentDoWorkspaceTree(workspaceRequest)
+    if (requestSeq !== workspaceTreeRequestSeq || !isCurrentConversation(targetConversationId)) return
     workspaceTreeRoot.value = data?.root || null
     workspaceExpandedDirs.value = ['']
 
@@ -1677,20 +1935,26 @@ async function loadWorkspaceTree(force = false) {
       }
     }
   } catch (error) {
+    if (requestSeq !== workspaceTreeRequestSeq || !isCurrentConversation(targetConversationId)) return
     workspaceTreeError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    workspaceTreeLoading.value = false
+    if (requestSeq === workspaceTreeRequestSeq && isCurrentConversation(targetConversationId)) {
+      workspaceTreeLoading.value = false
+    }
   }
 }
 
 async function loadWorkspaceFile(path, force = false) {
   const nextPath = String(path || '').trim()
-  if (!currentWorkspaceRequest.value.ready || !nextPath) return
+  const targetConversationId = String(currentConversationId.value || '').trim()
+  const workspaceRequest = buildWorkspaceRequest(targetConversationId)
+  if (!workspaceRequest.ready || !nextPath) return
   if (workspaceFileLoading.value && workspaceSelectedFile.value.path === nextPath) return
   if (!force && workspaceSelectedFile.value.path === nextPath && workspaceSelectedFile.value.content) {
     workspaceActiveView.value = 'file'
     return
   }
+  const requestSeq = ++workspaceFileRequestSeq
 
   workspaceFileLoading.value = true
   workspaceFileError.value = ''
@@ -1698,9 +1962,10 @@ async function loadWorkspaceFile(path, force = false) {
   expandDirectoryChainForPath(nextPath)
   try {
     const data = await fetchAgentDoWorkspaceFile({
-      ...currentWorkspaceRequest.value,
+      ...workspaceRequest,
       path: nextPath,
     })
+    if (requestSeq !== workspaceFileRequestSeq || !isCurrentConversation(targetConversationId)) return
     workspaceSelectedFile.value = {
       path: data?.path || nextPath,
       name: data?.name || nextPath.split('/').pop() || nextPath,
@@ -1710,9 +1975,12 @@ async function loadWorkspaceFile(path, force = false) {
       size: Number(data?.size || 0),
     }
   } catch (error) {
+    if (requestSeq !== workspaceFileRequestSeq || !isCurrentConversation(targetConversationId)) return
     workspaceFileError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    workspaceFileLoading.value = false
+    if (requestSeq === workspaceFileRequestSeq && isCurrentConversation(targetConversationId)) {
+      workspaceFileLoading.value = false
+    }
   }
 }
 
@@ -1723,6 +1991,25 @@ function handleWorkspaceNodeClick(node) {
     return
   }
   loadWorkspaceFile(node.path)
+}
+
+function downloadWorkspaceFile(path = '') {
+  const nextPath = String(path || '').trim()
+  const workspaceRequest = buildWorkspaceRequest()
+  if (!workspaceRequest.ready || !nextPath) return
+  const url = getAgentDoWorkspaceDownloadUrl({
+    username: workspaceRequest.username,
+    conversationId: workspaceRequest.conversationId,
+    path: nextPath,
+  })
+  if (typeof window === 'undefined') return
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = nextPath.split('/').pop() || 'download'
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
 }
 
 async function toggleWorkspaceFiles() {
@@ -2427,13 +2714,14 @@ function buildConversationSnapshot() {
   const currentPreview = current?.preview || {}
   const agentDoSessionId = agentDoDebug.value.sessionId || currentPreview.agentDoSessionId || ''
   const workspacePath = agentDoDebug.value.workspacePath || currentPreview.workspacePath || ''
-  return {
+  return normalizeConversationRecord({
     id: currentConversationId.value,
     title: chatTitle.value || '新对话',
     conversationMode: normalizeFunctionMode(current?.conversationMode || currentFunctionMode.value),
     orderIndex: current?.orderIndex ?? null,
     createdAt: current?.createdAt || new Date().toISOString(),
     messages: cloneMessages(messages.value),
+    selectedSkills: normalizeSkillMetaList(selectedSkillMetas.value),
     updatedAt: new Date().toISOString(),
     preview: {
       mode: previewMode.value,
@@ -2444,7 +2732,7 @@ function buildConversationSnapshot() {
       agentDoSessionId,
       workspacePath,
     },
-  }
+  })
 }
 
 function clampConversationPage(page) {
@@ -2565,40 +2853,45 @@ async function restoreConversationSessionMapping(conversation) {
 }
 
 async function applyConversation(conversation) {
+  const applySeq = ++conversationApplySeq
+  const normalizedConversation = normalizeConversationRecord(conversation)
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
   }
   cancelRename()
   historyHydrating = true
-  currentConversationId.value = conversation.id
-  syncConversationPageById(conversation.id)
-  syncConversationRoute(conversation.id)
-  chatTitle.value = conversation.title || '新对话'
-  messages.value = cloneMessages(conversation.messages || [])
-  const restoredMapping = await restoreConversationSessionMapping(conversation)
-  const restoredWorkspacePath = restoredMapping?.workspacePath || conversation.preview?.workspacePath || ''
-  previewMode.value = conversation.preview?.mode || 'empty'
-  previewHtml.value = conversation.preview?.html || ''
-  previewUrl.value = normalizeWorkshopPreviewUrl(conversation.preview?.url || '')
+  currentConversationId.value = normalizedConversation.id
+  syncConversationPageById(normalizedConversation.id)
+  syncConversationRoute(normalizedConversation.id)
+  chatTitle.value = normalizedConversation.title || '新对话'
+  messages.value = cloneMessages(normalizedConversation.messages || [])
+  selectedSkillMetas.value = normalizeSkillMetaList(normalizedConversation.selectedSkills)
+  previewMode.value = normalizedConversation.preview?.mode || 'empty'
+  previewHtml.value = normalizedConversation.preview?.html || ''
+  previewUrl.value = normalizeWorkshopPreviewUrl(normalizedConversation.preview?.url || '')
   previewFrameState.value = previewUrl.value || previewHtml.value ? 'loading' : 'idle'
   previewCode.value = {
-    lang: conversation.preview?.code?.lang || '',
-    content: conversation.preview?.code?.content || '',
+    lang: normalizedConversation.preview?.code?.lang || '',
+    content: normalizedConversation.preview?.code?.content || '',
   }
-  uploadedAttachments.value = mergeUploadedAttachmentRecords([], conversation.preview?.attachments || [])
+  uploadedAttachments.value = mergeUploadedAttachmentRecords([], normalizedConversation.preview?.attachments || [])
   pendingAttachments.value = []
   attachmentUploadError.value = ''
   resetAttachmentInput()
   streamingFriendly.value = ''
   streamingHtml.value = ''
   resetAgentDoDebug()
-  agentDoDebug.value.sessionId = restoredMapping?.agentDoSessionId || conversation.preview?.agentDoSessionId || ''
-  agentDoDebug.value.workspacePath = restoredWorkspacePath
-  agentDoDebug.value.previewUrl = previewUrl.value
   resetWorkspaceBrowser()
   urlLoadError.value = false
+  const restoredMapping = await restoreConversationSessionMapping(normalizedConversation)
+  if (applySeq !== conversationApplySeq || !isCurrentConversation(normalizedConversation.id)) return
+  const restoredWorkspacePath = restoredMapping?.workspacePath || normalizedConversation.preview?.workspacePath || ''
+  agentDoDebug.value.sessionId = restoredMapping?.agentDoSessionId || normalizedConversation.preview?.agentDoSessionId || ''
+  agentDoDebug.value.workspacePath = restoredWorkspacePath
+  agentDoDebug.value.previewUrl = previewUrl.value
   nextTick(() => {
+    if (applySeq !== conversationApplySeq || !isCurrentConversation(normalizedConversation.id)) return
     historyHydrating = false
     scrollBottom()
   })
@@ -2612,10 +2905,15 @@ function hasMeaningfulConversationContent(conversation) {
   if (!conversation) return false
   const messagesList = Array.isArray(conversation.messages) ? conversation.messages : []
   if (messagesList.length > 0) return true
+  const selectedSkills = normalizeSkillMetaList(conversation.selectedSkills)
+  if (selectedSkills.length > 0) return true
   const preview = conversation.preview || {}
   if (String(preview.html || '').trim()) return true
   if (String(preview.url || '').trim()) return true
   if (String(preview?.code?.content || '').trim()) return true
+  if (Array.isArray(preview.attachments) && preview.attachments.length > 0) return true
+  if (String(preview.agentDoSessionId || '').trim()) return true
+  if (String(preview.workspacePath || '').trim()) return true
   return false
 }
 
@@ -2683,10 +2981,10 @@ async function persistConversations() {
     const savedIndex = conversationList.value.findIndex((item) => item.id === saved.id)
     if (savedIndex >= 0) {
       const merged = [...conversationList.value]
-      merged[savedIndex] = {
+      merged[savedIndex] = normalizeConversationRecord({
         ...merged[savedIndex],
         ...saved,
-      }
+      })
       conversationList.value = merged
     }
   })()
@@ -2732,7 +3030,7 @@ async function createNewConversation(options = {}) {
   await applyConversation(conversation)
   await waitForConversationApply()
   if (conversation.conversationMode === 'skill_assistant') {
-    await ensureSkillAssistantWorkspaceReady({ force: true, silent: false })
+    await ensureConversationWorkspaceReady({ force: true, silent: false })
   }
   if (isMobile.value) {
     mobilePane.value = 'chat'
@@ -2824,10 +3122,7 @@ async function loadWorkshopHistory() {
   }
   const conversations = await fetchWorkshopConversations()
   conversationList.value = Array.isArray(conversations)
-    ? conversations.map((item) => ({
-      ...item,
-      conversationMode: normalizeFunctionMode(item?.conversationMode || currentFunctionMode.value),
-    }))
+    ? conversations.map((item) => normalizeConversationRecord(item))
     : []
   const routeConversationId = String(route.query.cid || '').trim()
   let current = conversationList.value.find((item) => item.id === routeConversationId) || conversationList.value[0]
@@ -2858,6 +3153,7 @@ function normalizeConversationComparable(conversation) {
     orderIndex: conversation?.orderIndex ?? null,
     createdAt: String(conversation?.createdAt || ''),
     messages: Array.isArray(conversation?.messages) ? conversation.messages : [],
+    selectedSkills: normalizeSkillMetaList(conversation?.selectedSkills),
     preview: conversation?.preview || {},
   })
 }
@@ -2866,9 +3162,11 @@ function hasConversationContentChanged(existingConversation, snapshot) {
   if (!existingConversation) return true
   return JSON.stringify({
     messages: Array.isArray(existingConversation?.messages) ? existingConversation.messages : [],
+    selectedSkills: normalizeSkillMetaList(existingConversation?.selectedSkills),
     preview: existingConversation?.preview || {},
   }) !== JSON.stringify({
     messages: Array.isArray(snapshot?.messages) ? snapshot.messages : [],
+    selectedSkills: normalizeSkillMetaList(snapshot?.selectedSkills),
     preview: snapshot?.preview || {},
   })
 }
@@ -2948,10 +3246,10 @@ async function commitRename(id) {
     const savedIndex = conversationList.value.findIndex((item) => item.id === id)
     if (savedIndex >= 0) {
       const merged = [...conversationList.value]
-      merged[savedIndex] = {
+      merged[savedIndex] = normalizeConversationRecord({
         ...merged[savedIndex],
         ...saved,
-      }
+      })
       conversationList.value = merged
     }
     emitWorkshopHistoryChanged()
@@ -3528,9 +3826,18 @@ html, body {
 async function sendLegacyMessage(options = {}) {
   const text = (options.textOverride ?? inputText.value).trim()
   if (!text || busy.value) return
+  const targetConversationId = String(options.conversationId || currentConversationId.value || '').trim()
+  const targetWorkspaceRequest = buildWorkspaceRequest(targetConversationId)
 
   const title = extractTitle(text)
   if (title) chatTitle.value = title
+  const targetTitle = String(
+    title
+    || options.title
+    || getConversationTitleById(targetConversationId)
+    || 'Skill Assistant Session',
+  ).trim() || 'Skill Assistant Session'
+  const targetSkillIds = [...selectedSkillIds.value]
 
   if (!options.skipUserPush) {
     messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
@@ -3559,16 +3866,23 @@ async function sendLegacyMessage(options = {}) {
   loading.value = false
 
   try {
-    await ensureSkillAssistantWorkspaceReady({ silent: true })
+    const workspaceReady = await ensureConversationWorkspaceReady({
+      silent: true,
+      conversationId: targetConversationId,
+      title: targetTitle,
+    })
+    if (!workspaceReady) {
+      throw new Error(workspaceBootstrapError.value || '工作区初始化失败，请重试')
+    }
     for await (const part of streamGenerateText(
       text,
       '你是专业的 Skill 助手。请直接输出清晰、可执行的文本答案；'
       + '除非用户明确要求，不要生成 HTML 页面代码。',
       {
-        conversationId: currentWorkspaceRequest.value.conversationId,
-        username: currentWorkspaceRequest.value.username,
-        title: chatTitle.value || 'Skill Assistant Session',
-        manualSkillIds: selectedSkillIds.value,
+        conversationId: targetConversationId,
+        username: targetWorkspaceRequest.username,
+        title: targetTitle,
+        manualSkillIds: targetSkillIds,
         autoResolveSkills: true,
         skillMode: currentFunctionMode.value,
         maxSkillCount: 3,
@@ -3625,40 +3939,55 @@ async function sendLegacyMessage(options = {}) {
 }
 
 async function sendMessage() {
-  if (currentFunctionMode.value === 'skill_assistant') {
-    const text = inputText.value.trim()
-    const shouldSendDefaultPrompt = !text && (
-      pendingAttachments.value.length > 0
-      || (uploadedAttachments.value.length > 0 && messages.value.length === 0)
-    )
-    if (!text && !shouldSendDefaultPrompt) return
+  const text = inputText.value.trim()
+  const shouldSendDefaultPrompt = !text && (
+    pendingAttachments.value.length > 0
+    || (uploadedAttachments.value.length > 0 && messages.value.length === 0)
+  )
+  if ((!text && !shouldSendDefaultPrompt) || busy.value) return
 
+  if (!currentConversationId.value) {
+    const createdConversation = await createNewConversation({ startRename: false })
+    if (!createdConversation?.id) return
+  }
+
+  if (currentFunctionMode.value === 'skill_assistant') {
+    const targetConversationId = String(currentConversationId.value || '').trim()
     try {
       if (pendingAttachments.value.length) {
-        await uploadPendingSkillAttachments()
+        const workspaceReady = await ensureConversationWorkspaceReady({
+          silent: true,
+          conversationId: targetConversationId,
+        })
+        if (!workspaceReady) return
+        await uploadPendingConversationAttachments({
+          conversationId: targetConversationId,
+          title: chatTitle.value || 'Skill Assistant Session',
+        })
       }
     } catch {
       return
     }
 
     await sendLegacyMessage({
-      textOverride: text || SKILL_ATTACHMENT_DEFAULT_PROMPT,
+      conversationId: targetConversationId,
+      title: chatTitle.value || 'Skill Assistant Session',
+      textOverride: text || currentAttachmentDefaultPrompt.value,
     })
     return
   }
 
-  const text = inputText.value.trim()
-  if (!text || busy.value) return
+  const requestText = text || currentAttachmentDefaultPrompt.value
 
   if (shouldForkFailedSingleHtmlConversation()) {
     await createNewConversation({ startRename: false })
   }
 
   const previousPreviewState = snapshotPreviewState()
-  const title = extractTitle(text)
+  const title = extractTitle(requestText)
   if (title) chatTitle.value = title
 
-  messages.value.push({ key: allocMessageKey(), role: 'user', content: text, time: nowTime() })
+  messages.value.push({ key: allocMessageKey(), role: 'user', content: requestText, time: nowTime() })
   inputText.value = ''
   if (textareaEl.value) textareaEl.value.style.height = 'auto'
 
@@ -3673,7 +4002,7 @@ async function sendMessage() {
   streamingSegments.value = [{ _streamId: 'agentDo-answer', kind: 'text', content: 'Agent-Do 正在处理中...' }]
   resetAgentDoDebug()
   const requestPayload = {
-    context: text,
+    context: requestText,
     systemPrompt: buildModeSystemPrompt(generationMode.value),
     conversationId: currentConversationId.value || `conv-${Date.now()}`,
     username: currentUser.value?.username || 'workshop_guest',
@@ -3690,7 +4019,7 @@ async function sendMessage() {
 
   try {
     busy.value = true
-    loading.value = false
+    loading.value = Boolean(pendingAttachments.value.length)
     userScrolledUp.value = false
     newChunksWhileScrolledUp.value = false
     startElapsedTimer()
@@ -3700,6 +4029,15 @@ async function sendMessage() {
     const username = currentUser.value?.username || 'workshop_guest'
     const requestTitle = title || chatTitle.value || 'Workshop Project'
     const systemPrompt = buildModeSystemPrompt(generationMode.value)
+
+    const workspaceReady = await ensureConversationWorkspaceReady({ silent: true })
+    if (!workspaceReady) {
+      throw new Error(workspaceBootstrapError.value || '工作区初始化失败，请重试')
+    }
+    if (pendingAttachments.value.length) {
+      await uploadPendingConversationAttachments()
+    }
+    loading.value = false
 
     async function runAgentDoAttempt(attemptContext) {
       let attemptResult = null
@@ -3897,7 +4235,7 @@ function shouldForkFailedSingleHtmlConversation() {
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
-    loadStoredSkillSelection()
+    clearLegacyStoredSkillSelection()
     window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
     window.addEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
     window.addEventListener(WORKSHOP_SKILL_SELECTED_EVENT, handleSkillSelectionChanged)
@@ -5846,25 +6184,40 @@ watch(
 
 .workspace-tree-node {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.workspace-tree-main {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 0;
   cursor: pointer;
   text-align: left;
   transition: background 0.16s ease, color 0.16s ease;
 }
 
-.workspace-tree-node:hover {
+.workspace-tree-main:hover,
+.workspace-tree-node.is-selected .workspace-tree-main {
+  color: var(--text-primary);
+}
+
+.workspace-tree-node:hover,
+.workspace-tree-node.is-selected {
   background: var(--workshop-hover-bg);
 }
 
 .workspace-tree-node.is-selected {
-  background: rgba(99,102,241,0.16);
-  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.16);
 }
 
 .workspace-tree-caret {
@@ -5901,6 +6254,28 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.84rem;
+}
+
+.workspace-node-download {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.workspace-node-download:hover {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: rgba(99, 102, 241, 0.32);
+  color: var(--text-primary);
 }
 
 .results-main {

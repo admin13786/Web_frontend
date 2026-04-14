@@ -1,5 +1,9 @@
+# 支持通过构建参数覆盖基础镜像，默认使用更稳定的镜像代理。
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine
+ARG NGINX_IMAGE=docker.m.daocloud.io/library/nginx:alpine
+
 # 阶段一：用 Node 安装依赖并构建前端
-FROM node:20-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -21,7 +25,7 @@ ENV VITE_RANK_WEIBO_MOCK=${VITE_RANK_WEIBO_MOCK:-false}
 RUN npm run build
 
 # 阶段二：用 Nginx 托管静态资源，无需再安装任何“库”
-FROM nginx:alpine
+FROM ${NGINX_IMAGE}
 
 # 从构建阶段拷贝产物
 COPY --from=builder /app/dist /usr/share/nginx/html

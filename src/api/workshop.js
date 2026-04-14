@@ -2,6 +2,8 @@
  * Workshop API
  */
 
+import { getAuthToken } from './client.js'
+
 const API_BASE = import.meta.env.VITE_WORKSHOP_API_URL || '/api/workshop'
 
 function getApiOrigin() {
@@ -12,6 +14,34 @@ function getApiOrigin() {
 function toAbsoluteApiUrl(pathname) {
   return `${getApiOrigin()}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
 }
+
+async function workshopJsonRequest(path, options = {}) {
+  const token = getAuthToken()
+  const headers = {
+    Accept: 'application/json',
+    ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    ...options.headers,
+  }
+
+  const response = await fetch(API_BASE + path, {
+    ...options,
+    headers,
+  })
+
+  let data = null
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
+  }
+
+  return data
+}
+
 
 export function normalizeWorkshopPreviewUrl(url) {
   if (!url || typeof url !== 'string') return ''
@@ -69,6 +99,13 @@ async function* parseSseWorkshopStream(response) {
       return
     }
     const content = msg.content
+    if (msg.type === 'error') {
+      throw new Error(
+        (typeof content === 'string' && content)
+        || (typeof msg.message === 'string' && msg.message)
+        || '请求失败',
+      )
+    }
     if (typeof content !== 'string' || !content) return
     if (msg.type === 'friendly') {
       yield { kind: 'friendly', content }
@@ -192,6 +229,9 @@ export async function* streamGenerateText(context, systemPrompt, payload = {}) {
     body: JSON.stringify({
       context,
       system_prompt: systemPrompt,
+      conversation_id: payload.conversationId || '',
+      username: payload.username || 'workshop_guest',
+      title: payload.title || '',
       manual_skill_ids: Array.isArray(payload.manualSkillIds) ? payload.manualSkillIds : [],
       auto_resolve_skills: payload.autoResolveSkills !== false,
       skill_mode: payload.skillMode || 'skill_assistant',
@@ -396,6 +436,67 @@ export async function deleteAgentDoSessionMapping({ username, conversationId }) 
   return data
 }
 
+export async function fetchAgentDoConversationTokenUsage({ username, conversationId }) {
+  try {
+    return await workshopJsonRequest(
+      '/agent-do/tokens/conversation/' + encodeURIComponent(username) + '/' + encodeURIComponent(conversationId)
+    )
+  } catch (error) {
+    if (String(error?.message || '').includes('Conversation mapping not found')) {
+      return {
+        username,
+        conversationId,
+        agentDoSessionId: '',
+        workspacePath: '',
+        tokenUsage: {
+          session_id: '',
+          user_id: username,
+          title: '',
+          run_count: 0,
+          total_tokens: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          first_recorded_at: null,
+          last_recorded_at: null,
+          items: [],
+        },
+      }
+    }
+    throw error
+  }
+}
+
+export async function fetchAgentDoUserTokenUsage(username) {
+  try {
+    return await workshopJsonRequest('/agent-do/tokens/user/' + encodeURIComponent(username))
+  } catch (error) {
+    if (
+      String(error?.message || '').includes('HTTP 404')
+      || String(error?.message || '').includes('user_id is required')
+    ) {
+      return {
+        username,
+        tokenUsage: {
+          user_id: username,
+          run_count: 0,
+          session_count: 0,
+          total_tokens: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          first_recorded_at: null,
+          last_recorded_at: null,
+          sessions: [],
+        },
+      }
+    }
+    throw error
+  }
+}
+
 /* [容器池功能暂时禁用]
 export async function fetchAgentDoSandboxPool() {
   const response = await fetch(`${API_BASE}/agent-do/sandbox-pool`, {
@@ -478,7 +579,12 @@ export async function fetchAgentDoWorkspaceFile({ username, conversationId, path
   return data
 }
 
-export async function uploadSkillAssistantFiles({ username, conversationId, title = '' }, files = []) {
+export function getAgentDoWorkspaceDownloadUrl({ username, conversationId, path }) {
+  const query = new URLSearchParams({ path: path || '' })
+  return `${API_BASE}/agent-do/files/${encodeURIComponent(username)}/${encodeURIComponent(conversationId)}/download?${query.toString()}`
+}
+
+export async function uploadConversationFiles({ username, conversationId, title = '' }, files = []) {
   const normalizedUsername = String(username || '').trim()
   const normalizedConversationId = String(conversationId || '').trim()
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : []
@@ -521,6 +627,10 @@ export async function uploadSkillAssistantFiles({ username, conversationId, titl
   }
 
   return data
+}
+
+export async function uploadSkillAssistantFiles(session, files = []) {
+  return uploadConversationFiles(session, files)
 }
 
 export async function fetchWorkshopSkills({
