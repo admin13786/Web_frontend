@@ -416,6 +416,18 @@
                     <div v-if="seg.kind === 'text'" class="agent-text">
                       <MarkdownView :content="seg.content" :mode="markdownMode" />
                     </div>
+                    <div v-else class="agent-card" :class="'card-' + seg.type">
+                      <div class="agent-card-header" @click="seg.open = !seg.open">
+                        <span class="card-icon">{{ seg.icon }}</span>
+                        <span class="card-title-text">{{ seg.title }}</span>
+                        <span v-if="seg.badge" class="agent-card-badge" :class="seg.badgeClass">{{ seg.badge }}</span>
+                        <svg class="chevron" :class="{ open: seg.open }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                      </div>
+                      <div v-if="seg.open" class="agent-card-body">
+                        <pre v-if="seg.type === 'bash'" class="bash-block"><code>{{ seg.content }}</code></pre>
+                        <MarkdownView v-else :content="seg.content" :mode="markdownMode" />
+                      </div>
+                    </div>
                   </template>
                 </template>
                 <template v-else-if="streamingHtml">
@@ -462,6 +474,7 @@
                     <div class="agent-card-header" @click="seg.open = !seg.open">
                       <span class="card-icon">{{ seg.icon }}</span>
                       <span class="card-title-text">{{ seg.title }}</span>
+                      <span v-if="seg.badge" class="agent-card-badge" :class="seg.badgeClass">{{ seg.badge }}</span>
                       <svg class="chevron" :class="{ open: seg.open }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                     <div v-if="seg.open" class="agent-card-body">
@@ -3481,6 +3494,257 @@ function upsertStreamingCard(id, next) {
   return segment
 }
 
+function clampPanelText(text, maxLength = 1200) {
+  const normalized = String(text || '').trim()
+  if (!normalized) return ''
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength)}\n...`
+}
+
+function createSkillAssistantStreamState() {
+  return {
+    meta: null,
+    statuses: [],
+    pingCount: 0,
+    lastPingAt: '',
+    done: null,
+    toolSeq: 0,
+    activeToolCardIds: Object.create(null),
+    textSeq: 0,
+    currentTextSegmentId: '',
+  }
+}
+
+function appendSkillAssistantFriendlyChunk(content, state) {
+  const chunk = String(content || '')
+  if (!chunk || !state) return
+
+  let segmentId = String(state.currentTextSegmentId || '').trim()
+  if (!segmentId) {
+    state.textSeq += 1
+    segmentId = `skill-friendly-${state.textSeq}`
+    state.currentTextSegmentId = segmentId
+    upsertStreamingText(segmentId, chunk)
+    return
+  }
+
+  const existing = getStreamingSegment(segmentId)
+  if (!existing) {
+    upsertStreamingText(segmentId, chunk)
+    return
+  }
+  upsertStreamingText(segmentId, `${existing.content || ''}${chunk}`)
+}
+
+function normalizeSkillAssistantToolStatus(status, hasError = false) {
+  if (hasError) return 'error'
+  const normalized = String(status || 'running').trim().toLowerCase()
+  if (['pending', 'running', 'completed', 'error'].includes(normalized)) return normalized
+  return 'running'
+}
+
+function isTerminalSkillAssistantToolStatus(status) {
+  return status === 'completed' || status === 'error'
+}
+
+function parseSkillAssistantStructuredText(text) {
+  const raw = String(text || '').trim()
+  if (!raw || !/^[\[{]/.test(raw)) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function extractSkillAssistantCommandPreview(input) {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+
+  const parsed = parseSkillAssistantStructuredText(raw)
+  if (Array.isArray(parsed)) {
+    const joined = parsed.map((item) => String(item || '').trim()).filter(Boolean).join(' ')
+    return summarizePlainText(joined, 72)
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    const candidates = [
+      parsed.command,
+      parsed.cmd,
+      parsed.bash,
+      parsed.shell,
+      parsed.script,
+      parsed.query,
+      parsed.path,
+      parsed.file,
+      parsed.url,
+      parsed.prompt,
+      parsed.content,
+    ]
+    for (const candidate of candidates) {
+      const text = summarizePlainText(candidate, 72)
+      if (text && text !== '暂无详细内容') return text
+    }
+    return summarizePlainText(JSON.stringify(parsed), 72)
+  }
+
+  return summarizePlainText(raw.split('\n').find((line) => line.trim()) || raw, 72)
+}
+
+function isSkillAssistantCommandLikeTool(tool) {
+  const haystack = `${tool?.tool || ''} ${tool?.title || ''}`.toLowerCase()
+  return /bash|shell|command|cmd|terminal|run/.test(haystack)
+}
+
+function buildSkillAssistantToolSignature(event) {
+  return [
+    String(event?.tool || '').trim(),
+    String(event?.title || '').trim(),
+    extractSkillAssistantCommandPreview(event?.input || ''),
+  ].join('::')
+}
+
+function buildSkillAssistantCommandTitle(tool) {
+  const preview = extractSkillAssistantCommandPreview(tool?.input || '')
+  const toolLabel = String(tool?.title || tool?.tool || '工具').trim() || '工具'
+  if (preview) {
+    return isSkillAssistantCommandLikeTool(tool)
+      ? `执行命令 ${preview}`
+      : `${toolLabel} · ${preview}`
+  }
+  return isSkillAssistantCommandLikeTool(tool)
+    ? `执行命令 ${toolLabel}`
+    : `执行工具 ${toolLabel}`
+}
+
+function buildSkillAssistantCommandDetail(tool) {
+  const sections = [
+    `状态：${formatToolStatus(tool.status)}`,
+    `工具：${tool.title || tool.tool || 'tool'}`,
+  ]
+  const summary = summarizePlainText(tool.error || tool.output || tool.input || '', 180)
+  if (summary && summary !== '暂无详细内容') {
+    sections.push(`摘要：${summary}`)
+  }
+
+  const input = clampPanelText(tool.input, 2200)
+  const output = clampPanelText(tool.output, 2200)
+  const error = clampPanelText(tool.error, 2200)
+  if (input) sections.push(`输入\n\`\`\`text\n${input}\n\`\`\``)
+  if (output) sections.push(`输出\n\`\`\`text\n${output}\n\`\`\``)
+  if (error) sections.push(`错误\n\`\`\`text\n${error}\n\`\`\``)
+
+  return sections.join('\n\n')
+}
+
+function buildSkillAssistantPingContent(state) {
+  const lines = [`累计收到 ${state.pingCount} 次心跳。`]
+  if (state.lastPingAt) {
+    lines.push(`最近时间：${state.lastPingAt}`)
+  }
+  return lines.join('\n\n')
+}
+
+function buildSkillAssistantDoneContent(done) {
+  const lines = ['本次 Skill 助手流式调用已结束。']
+  if (done?.durationMs != null) lines.push(`耗时：${done.durationMs} ms`)
+  if (done?.exitCode != null) lines.push(`退出码：${done.exitCode}`)
+  if (done?.totalTokens != null) lines.push(`Token：${done.totalTokens}`)
+  if (Array.isArray(done?.changedFiles) && done.changedFiles.length) {
+    lines.push(`变更文件：${done.changedFiles.join(', ')}`)
+  }
+  const output = clampPanelText(done?.output || '', 2200)
+  if (output) {
+    lines.push(`最终输出\n\`\`\`text\n${output}\n\`\`\``)
+  }
+  return lines.join('\n\n')
+}
+
+function handleSkillAssistantStreamEvent(event, state) {
+  if (!event || typeof event !== 'object' || !state) return
+
+  if (event.type === 'meta') {
+    state.meta = event
+    return
+  }
+
+  if (event.type === 'status') {
+    const content = String(event.content || '').trim()
+    const stage = String(event.stage || 'status').trim() || 'status'
+    const last = state.statuses[state.statuses.length - 1]
+    if (!last || last.stage !== stage || last.content !== content) {
+      state.statuses.push({ stage, content })
+    }
+    return
+  }
+
+  if (event.type === 'tool') {
+    state.currentTextSegmentId = ''
+    const nextTool = {
+      tool: event.tool || 'tool',
+      title: event.title || event.tool || 'tool',
+      status: normalizeSkillAssistantToolStatus(event.status, Boolean(event.error)),
+      input: event.input || '',
+      output: event.output || '',
+      error: event.error || '',
+    }
+    const signature = buildSkillAssistantToolSignature(nextTool)
+    let cardId = state.activeToolCardIds[signature]
+    if (!cardId) {
+      state.toolSeq += 1
+      cardId = `skill-tool-${state.toolSeq}`
+      state.activeToolCardIds[signature] = cardId
+    }
+    const existingSegment = getStreamingSegment(cardId)
+    upsertStreamingCard(cardId, {
+      type: 'command',
+      icon: toolIcon(nextTool),
+      title: buildSkillAssistantCommandTitle(nextTool),
+      content: buildSkillAssistantCommandDetail(nextTool),
+      badge: formatToolStatus(nextTool.status),
+      badgeClass: `is-${nextTool.status}`,
+      ...(existingSegment ? {} : { open: false }),
+    })
+    if (isTerminalSkillAssistantToolStatus(nextTool.status)) {
+      delete state.activeToolCardIds[signature]
+    }
+    return
+  }
+
+  if (event.type === 'ping') {
+    state.currentTextSegmentId = ''
+    state.pingCount += 1
+    state.lastPingAt = String(event.timestamp || '')
+    const existingSegment = getStreamingSegment('skill-ping')
+    upsertStreamingCard('skill-ping', {
+      type: 'command-meta',
+      icon: 'PING',
+      title: '会话心跳',
+      content: buildSkillAssistantPingContent(state),
+      badge: `x${state.pingCount}`,
+      badgeClass: 'is-idle',
+      ...(existingSegment ? {} : { open: false }),
+    })
+    return
+  }
+
+  if (event.type === 'done') {
+    state.currentTextSegmentId = ''
+    state.done = event
+    const normalizedStatus = Number(event.exitCode) === 0 || event.exitCode == null ? 'completed' : 'error'
+    const existingSegment = getStreamingSegment('skill-done')
+    upsertStreamingCard('skill-done', {
+      type: 'command-meta',
+      icon: normalizedStatus === 'error' ? 'ERR' : 'DONE',
+      title: '执行完成',
+      content: buildSkillAssistantDoneContent(event),
+      badge: normalizedStatus === 'error' ? '异常结束' : '已完成',
+      badgeClass: `is-${normalizedStatus}`,
+      ...(existingSegment ? {} : { open: false }),
+    })
+  }
+}
+
 function formatTodoContent(todos) {
   if (!Array.isArray(todos) || todos.length === 0) {
     return '当前没有待办项。'
@@ -3863,9 +4127,11 @@ async function sendLegacyMessage(options = {}) {
   messages.value.push(assistantMsg)
   streamingFriendly.value = ''
   streamingHtml.value = ''
+  streamingSegments.value = []
   loading.value = false
 
   try {
+    const skillStreamState = createSkillAssistantStreamState()
     const workspaceReady = await ensureConversationWorkspaceReady({
       silent: true,
       conversationId: targetConversationId,
@@ -3888,22 +4154,35 @@ async function sendLegacyMessage(options = {}) {
         maxSkillCount: 3,
       },
     )) {
-      // Skill Assistant 一律按文本流式展示，避免误入 HTML 预览链路
-      streamingFriendly.value += part.content
+      if (part.kind === 'friendly') {
+        streamingFriendly.value += part.content
+        // 按事件分段写入，保证工具卡片出现在实际发生的位置
+        appendSkillAssistantFriendlyChunk(part.content, skillStreamState)
+      } else if (part.kind === 'event') {
+        handleSkillAssistantStreamEvent(part.event, skillStreamState)
+      }
       await nextTick()
       scrollBottom()
     }
 
     const answerText = streamingFriendly.value.trim()
+    const finalSegments = cloneSegments(
+      streamingSegments.value.filter((segment) => (
+        segment.kind !== 'text' || String(segment.content || '').trim()
+      )),
+    )
     assistantMsg.streamingLive = false
     streamingFriendly.value = ''
     streamingHtml.value = ''
-    assistantMsg.segments = [
-      {
-        kind: 'text',
-        content: answerText || '已完成，但未收到可展示内容，请重试一次。',
-      },
-    ]
+    assistantMsg.segments = finalSegments.length
+      ? finalSegments
+      : [
+          {
+            kind: 'text',
+            content: answerText || '已完成，但未收到可展示内容，请重试一次。',
+          },
+        ]
+    streamingSegments.value = []
     // Skill Assistant 不应污染右侧预览状态
     previewMode.value = 'empty'
     previewUrl.value = ''
@@ -3913,17 +4192,26 @@ async function sendLegacyMessage(options = {}) {
   } catch (e) {
     assistantMsg.streamingLive = false
     assistantMsg.agentDoTrace = buildAgentDoTraceSnapshot()
+    const partialText = streamingFriendly.value.trim()
     streamingFriendly.value = ''
     streamingHtml.value = ''
     const errorMsg = e.name === 'AbortError'
       ? '请求超时，请稍后重试'
       : `请求失败：${e.message}`
-    const segs = [{ kind: 'text', content: errorMsg }]
-    if (cleanedHTML?.trim()) {
-      segs.push({ kind: 'html_source', content: cleanedHTML.trim() })
-      flushPreviewImmediate(enforceWorkshopPreviewFit(cleanedHTML.trim()))
+    const segs = cloneSegments(
+      streamingSegments.value.filter((segment) => (
+        segment.kind !== 'text' || String(segment.content || '').trim()
+      )),
+    )
+    if (partialText) {
+      const hasTextSegment = segs.some((segment) => segment.kind === 'text')
+      if (!hasTextSegment) {
+        segs.unshift({ kind: 'text', content: partialText })
+      }
     }
+    segs.push({ kind: 'text', content: errorMsg })
     assistantMsg.segments = segs
+    streamingSegments.value = []
   } finally {
     agentDoDebug.value.requestCompletedAt = Date.now()
     stopElapsedTimer()
@@ -5933,10 +6221,21 @@ watch(
   font-size: 0.85rem;
   font-weight: 500;
 }
-.agent-card-header:hover { background: rgba(255,255,255,0.04); }
+.agent-card-header:hover { background: var(--workshop-hover-bg, rgba(148, 163, 184, 0.1)); }
 
 .card-icon { font-size: 0.95rem; }
 .card-title-text { flex: 1; }
+
+.agent-card-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 1px solid var(--bg-glass-border, rgba(148, 163, 184, 0.24));
+  color: var(--text-primary, #172033);
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.9));
+}
 
 .chevron { transition: transform 0.2s; flex-shrink: 0; }
 .chevron.open { transform: rotate(180deg); }
@@ -5966,6 +6265,18 @@ watch(
 .card-read     .agent-card-header { color: #fb923c; }
 .card-search   .agent-card-header { color: #818cf8; }
 .card-skill    .agent-card-header { color: #f472b6; }
+.card-status   .agent-card-header { color: #93c5fd; }
+.card-tools    .agent-card-header { color: #6ee7b7; }
+.card-events   .agent-card-header { color: #fcd34d; }
+.card-command .agent-card-header,
+.card-command-meta .agent-card-header {
+  color: var(--text-primary, #172033);
+}
+.card-command .agent-card-body,
+.card-command-meta .agent-card-body {
+  color: var(--text-secondary, #52607a);
+  background: var(--bg-muted, rgba(226, 232, 240, 0.72));
+}
 
 .typing-dots { display: flex; gap: 5px; padding: 8px 4px; }
 .typing-dots span {

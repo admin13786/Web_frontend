@@ -76,7 +76,7 @@ export function normalizeWorkshopPreviewUrl(url) {
 }
 
 /**
- * @typedef {{ kind: 'friendly' | 'html', content: string }} WorkshopStreamPart
+ * @typedef {{ kind: 'friendly' | 'html', content: string } | { kind: 'event', event: Record<string, any> }} WorkshopStreamPart
  */
 
 async function* parseSseWorkshopStream(response) {
@@ -105,6 +105,10 @@ async function* parseSseWorkshopStream(response) {
         || (typeof msg.message === 'string' && msg.message)
         || '请求失败',
       )
+    }
+    if (['meta', 'status', 'tool', 'ping', 'done'].includes(msg.type)) {
+      yield { kind: 'event', event: msg }
+      return
     }
     if (typeof content !== 'string' || !content) return
     if (msg.type === 'friendly') {
