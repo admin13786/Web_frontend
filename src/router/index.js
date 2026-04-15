@@ -53,6 +53,20 @@ const routes = [
         },
       },
       {
+        path: 'edu-repo',
+        name: 'EduRepo',
+        component: () => import('../views/EduRepoView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: 'EduRepo',
+          description: 'AI 科普内容加工与教育内容浏览',
+        },
+      },
+      {
+        path: 'edurepo',
+        redirect: '/edu-repo',
+      },
+      {
         path: 'news/:newsId',
         name: 'NewsDetail',
         component: () => import('../views/NewsDetailView.vue'),

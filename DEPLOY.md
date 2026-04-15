@@ -5,6 +5,8 @@
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | OpenMAIC | 3000 | 教育龙虾课堂生成服务 |
+| EduRepo Frontend | 5188 | EduRepo 独立前端页面 |
+| EduRepo Backend | 9010 | EduRepo FastAPI 服务 |
 | Crawl | 8000 | AI 新闻采集（本地模式） |
 | Crawl Worker | 6600 | 新闻采集 Worker（Docker） |
 | Crawl API | 8000 | 榜单、详情、认证与封面相关接口 |
@@ -22,6 +24,7 @@
 # 例如：
 VITE_OPENMAIC_BASE_URL=http://192.168.1.100:3000
 VITE_OPENMAIC_APP_URL=http://192.168.1.100:3000
+VITE_EDUREPO_VIEW_MODE=native
 ```
 
 ### 2. 构建前端
@@ -44,6 +47,7 @@ npm run build
 # 在服务器上执行
 export VITE_OPENMAIC_BASE_URL=http://your-server-ip:3000
 export VITE_OPENMAIC_APP_URL=http://your-server-ip:3000
+export VITE_EDUREPO_VIEW_MODE=native
 npm run build
 ```
 
@@ -77,6 +81,26 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # EduRepo 独立前端
+    location /edurepo/ {
+        proxy_pass http://localhost:5188;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # EduRepo API
+    location /api/edu/ {
+        proxy_pass http://localhost:9010/api/edu/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # 其他后端服务代理...
 }
 ```
@@ -85,6 +109,12 @@ server {
 ```
 VITE_OPENMAIC_BASE_URL=/openmaic
 VITE_OPENMAIC_APP_URL=/openmaic
+VITE_EDUREPO_VIEW_MODE=native
+```
+
+如果你要保留 iframe 回退模式（`VITE_EDUREPO_VIEW_MODE=embed`），并且 EduRepo 前端通过 `/edurepo/` 子路径提供，请在构建 EduRepo 前端时额外设置：
+```
+VITE_PUBLIC_BASE=/edurepo/
 ```
 
 ---
@@ -102,6 +132,9 @@ VITE_OPENMAIC_APP_URL=/openmaic
 
 2. **检查前端是否能访问 OpenMAIC**：
    打开浏览器开发者工具 → Network → 点击"教育龙虾"按钮，查看请求是否成功。
+
+3. **检查前端是否能访问 EduRepo**：
+   访问 `/edurepo`，确认主站原生页面能正常拉取 `/api/edu/*`；如启用 embed 回退，再访问 `/edurepo/` 检查独立子应用。
 
 ---
 
@@ -127,6 +160,8 @@ ports:
 部署前请确保：
 
 - [ ] OpenMAIC (3000) 正在运行且监听 0.0.0.0
+- [ ] EduRepo Frontend (5188) 正在运行
+- [ ] EduRepo Backend (9010) 正在运行
 - [ ] Crawl (8000) 正在运行（如使用本地模式）
 - [ ] Crawl Worker (6600) Docker 容器运行中（如使用 Docker）
 - [ ] Crawl API (8000) Docker 容器运行中

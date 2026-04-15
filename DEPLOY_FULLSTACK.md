@@ -16,6 +16,8 @@ APIs it depends on.
   - `Workshop` on port `5000`
   - `agent-do` on port `18000`
 - `Backend/OpenMAIC` publishes Next.js on port `3000`
+- `EduRepo/frontend` publishes the standalone EduRepo app on port `5188`
+- `EduRepo/backend` publishes the EduRepo API on port `9010`
 
 ## Trigger strategy
 
@@ -130,6 +132,8 @@ Why this order:
    - `http://server/api/ranks/main/weibo`
    - `http://server/api/workshop/agent-do/sandbox-pool`
    - `http://server/openmaic` or direct `:3000` access path
+   - `http://server/edurepo/`
+   - `http://server/api/edu/feed`
    - homepage leaderboard cover images
    - OpenMAIC image generation
 

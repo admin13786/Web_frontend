@@ -57,6 +57,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // EduRepo 后端代理
+      '/api/edu': {
+        target: 'http://localhost:9010',
+        changeOrigin: true,
+      },
     },
   },
 })

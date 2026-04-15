@@ -28,6 +28,10 @@ export const OPENMAIC_BASE_URL = import.meta.env.VITE_OPENMAIC_BASE_URL ?? ''
  * 当 OPENMAIC_BASE_URL 为相对路径 /openmaic 时，只用于同源 fetch 代理，整页仍需指向 Next 实际端口。
  */
 export const OPENMAIC_APP_URL = import.meta.env.VITE_OPENMAIC_APP_URL ?? ''
+export const EDUREPO_APP_URL = import.meta.env.VITE_EDUREPO_APP_URL ?? ''
+export const EDUREPO_VIEW_MODE = String(import.meta.env.VITE_EDUREPO_VIEW_MODE ?? 'native')
+  .trim()
+  .toLowerCase()
 
 export function getOpenMAICAppUrl() {
   const explicit = String(OPENMAIC_APP_URL || '').trim().replace(/\/$/, '')
@@ -38,6 +42,18 @@ export function getOpenMAICAppUrl() {
     return `${window.location.protocol}//${window.location.hostname}:3000`
   }
   return 'http://localhost:3000'
+}
+
+export function getEduRepoAppUrl() {
+  const explicit = String(EDUREPO_APP_URL || '').trim()
+  if (explicit) return explicit.endsWith('/') ? explicit : `${explicit}/`
+  // Native mode uses same-origin /api/edu and does not rely on this URL.
+  // Keep this fallback for one release cycle to support embed rollback.
+  return '/edurepo/'
+}
+
+export function isEduRepoEmbedMode() {
+  return EDUREPO_VIEW_MODE === 'embed'
 }
 
 /**
