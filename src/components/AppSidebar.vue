@@ -100,7 +100,7 @@
         <div class="user-name">{{ userName }}</div>
         <div class="user-token-total">总 Token {{ formatTokenCount(userTokenTotal) }}</div>
       </div>
-      <button type="button" class="logout-btn" @click="logout">退出登录</button>
+      <button type="button" class="logout-btn" @click="logout">{{ authActionLabel }}</button>
     </div>
 
     <Teleport to="body">
@@ -265,8 +265,18 @@ import {
   patchWorkshopSkillStatus,
 } from '../api/workshop.js'
 import { deleteWorkshopConversationDeep, fetchWorkshopConversations } from '../api/workshopConversations.js'
-import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
-import { removeWorkshopConversationState } from '../utils/workshopHistory.js'
+import {
+  clearCurrentUser,
+  getAuthChangedEventName,
+  getCurrentUser,
+  getGuestSessionUser,
+  getUserDisplayName,
+} from '../utils/auth.js'
+import {
+  getTransientWorkshopState,
+  removeTransientWorkshopConversationState,
+  removeWorkshopConversationState,
+} from '../utils/workshopHistory.js'
 import DeleteConversationConfirmModal from './DeleteConversationConfirmModal.vue'
 
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
@@ -274,6 +284,7 @@ const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
 const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
 const WORKSHOP_SKILL_STORAGE_KEY_LEGACY = 'workshop-selected-skill'
+const AUTH_CHANGED_EVENT = getAuthChangedEventName()
 const FUNCTION_MODE = {
   WORKSHOP: 'workshop',
   SKILL_ASSISTANT: 'skill_assistant',
@@ -284,7 +295,7 @@ defineEmits(['close-mobile'])
 
 const router = useRouter()
 const route = useRoute()
-const currentUser = getCurrentUser()
+const currentUser = ref(getCurrentUser())
 const conversations = ref([])
 const conversationTokenTotals = ref({})
 const userTokenTotal = ref(0)
@@ -313,7 +324,9 @@ const viewingSkill = ref(null)
 const viewingSkillMarkdown = ref('')
 const viewingSkillVersionMeta = ref(null)
 
-const userName = computed(() => getUserDisplayName(currentUser) || '未登录')
+const isAuthenticated = computed(() => Boolean(currentUser.value?.username))
+const userName = computed(() => getUserDisplayName(currentUser.value) || '游客模式')
+const authActionLabel = computed(() => (isAuthenticated.value ? '退出登录' : '登录 / 注册'))
 const brandLogoSrc = computed(() => '/branding/cognimatrix-logo-cutout.png')
 const currentFunctionMode = computed(() => normalizeFunctionMode(route.query.fm))
 const filteredConversations = computed(() => conversations.value.filter((item) => normalizeFunctionMode(item?.conversationMode) === currentFunctionMode.value))
@@ -377,11 +390,11 @@ function getConversationTokenTotal(conversationId) {
 }
 
 async function loadUserTokenUsage() {
-  const username = String(currentUser?.username || 'workshop_guest').trim()
-  if (!username) {
+  if (!isAuthenticated.value) {
     userTokenTotal.value = 0
     return
   }
+  const username = String(currentUser.value?.username || '').trim()
   try {
     const payload = await fetchAgentDoUserTokenUsage(username)
     userTokenTotal.value = Number(payload?.tokenUsage?.total_tokens || 0)
@@ -392,11 +405,11 @@ async function loadUserTokenUsage() {
 }
 
 async function loadConversationTokenUsage(items) {
-  const username = String(currentUser?.username || 'workshop_guest').trim()
-  if (!username) {
+  if (!isAuthenticated.value) {
     conversationTokenTotals.value = {}
     return
   }
+  const username = String(currentUser.value?.username || '').trim()
 
   const nextTotals = {}
   await Promise.all(
@@ -421,6 +434,10 @@ async function loadConversationTokenUsage(items) {
 function emitWorkshopHistoryChanged() { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('workshop-history-changed')) }
 function clearPendingDelete() { pendingDeleteConversationId.value = '' }
 function handleWorkshopHistoryChanged() { loadWorkshopHistory() }
+function handleAuthChanged() {
+  currentUser.value = getCurrentUser()
+  loadWorkshopHistory()
+}
 
 function loadStoredSkillSelection() {
   if (typeof window === 'undefined') return
@@ -796,6 +813,15 @@ async function toggleSkillStatus(item) { try { await patchWorkshopSkillStatus(it
 async function removeSkill(item) { if (typeof window !== 'undefined' && !window.confirm(`确认删除 Skill「${item.name}」吗？`)) return; try { await deleteWorkshopSkill(item.id); await loadSkills() } catch (error) { skillError.value = error instanceof Error ? error.message : String(error) } }
 
 async function loadWorkshopHistory() {
+  if (!isAuthenticated.value) {
+    const guestUsername = getGuestSessionUser()
+    const guestState = getTransientWorkshopState(guestUsername)
+    conversations.value = Array.isArray(guestState.conversations) ? guestState.conversations : []
+    conversationTokenTotals.value = {}
+    userTokenTotal.value = 0
+    syncPageByConversationId(activeConversationId.value)
+    return
+  }
   try {
     const items = await fetchWorkshopConversations()
     conversations.value = items
@@ -845,8 +871,12 @@ async function confirmRemoveConversation() {
   const nextConversations = conversations.value.filter((item) => item.id !== conversationId)
   const nextActiveId = nextConversations[currentIndex]?.id || nextConversations[currentIndex - 1]?.id || nextConversations[0]?.id || ''
   try {
-    await deleteWorkshopConversationDeep({ username: currentUser?.username || 'workshop_guest', conversationId })
-    removeWorkshopConversationState(currentUser?.username || 'workshop_guest', conversationId, nextActiveId)
+    if (isAuthenticated.value) {
+      await deleteWorkshopConversationDeep({ username: currentUser.value?.username || '', conversationId })
+      removeWorkshopConversationState(currentUser.value?.username || '', conversationId, nextActiveId)
+    } else {
+      removeTransientWorkshopConversationState(getGuestSessionUser(), conversationId, nextActiveId)
+    }
     conversations.value = nextConversations
     clampPage()
     window.dispatchEvent(new CustomEvent(WORKSHOP_CONVERSATION_DELETED_EVENT, { detail: { conversationId, nextActiveId } }))
@@ -855,7 +885,15 @@ async function confirmRemoveConversation() {
   } catch (error) { console.error('delete workshop conversation failed:', error) }
 }
 
-async function logout() { await logoutApi().catch(() => null); clearCurrentUser(); router.push('/login') }
+async function logout() {
+  if (!isAuthenticated.value) {
+    router.push('/login')
+    return
+  }
+  await logoutApi().catch(() => null)
+  clearCurrentUser()
+  router.push('/workshop')
+}
 
 watch(() => route.fullPath, () => loadWorkshopHistory(), { immediate: true })
 watch(() => currentFunctionMode.value, () => clampPage(0))
@@ -865,10 +903,12 @@ watch(() => conversations.value.length, () => clampPage())
 onMounted(() => {
   loadStoredSkillSelection()
   window.addEventListener('workshop-history-changed', handleWorkshopHistoryChanged)
+  window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('workshop-history-changed', handleWorkshopHistoryChanged)
+  window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
 })
 </script>
 

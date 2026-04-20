@@ -1,12 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { login } from '../api/auth.js'
-import { DEFAULT_USER, clearCurrentUser, getCurrentUser, saveCurrentUser } from '../utils/auth.js'
+import { getCurrentUser } from '../utils/auth.js'
 
 const routes = [
   {
     path: '/',
     component: () => import('../layouts/AppShell.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: false },
     children: [
       {
         path: '',
@@ -17,7 +16,7 @@ const routes = [
         name: 'Home',
         component: () => import('../views/HomeView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: '欢迎页',
           description: '选择工作区并开始新的内容创作流程',
         },
@@ -27,7 +26,7 @@ const routes = [
         name: 'Channel',
         component: () => import('../views/ChannelView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: 'AI新闻早咖啡',
           description: '查看热点排行与讲解入口',
         },
@@ -37,7 +36,7 @@ const routes = [
         name: 'Workshop',
         component: () => import('../views/WorkshopView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: '创意工坊',
           description: '对话生成与结果预览',
         },
@@ -57,7 +56,7 @@ const routes = [
         name: 'EduRepo',
         component: () => import('../views/EduRepoView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: 'EduRepo',
           description: 'AI 科普内容加工与教育内容浏览',
         },
@@ -71,7 +70,7 @@ const routes = [
         name: 'NewsDetail',
         component: () => import('../views/NewsDetailView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: '资讯详情',
           description: '查看原文与资讯详情',
         },
@@ -81,7 +80,7 @@ const routes = [
         name: 'NewsBrief',
         component: () => import('../views/NewsBriefView.vue'),
         meta: {
-          requiresAuth: true,
+          requiresAuth: false,
           title: '简报详情',
           description: '从AI新闻早咖啡跳转查看摘要',
         },
@@ -101,44 +100,8 @@ const router = createRouter({
   routes,
 })
 
-let defaultLoginPromise = null
-
-async function ensureDefaultUser() {
-  if (!defaultLoginPromise) {
-    defaultLoginPromise = login({
-      username: DEFAULT_USER.username,
-      password: DEFAULT_USER.password,
-    })
-      .then((res) => {
-        if (res.success && res.token) {
-          saveCurrentUser({
-            username: res.user?.username || DEFAULT_USER.username,
-            displayName: res.user?.displayName || DEFAULT_USER.displayName,
-            token: res.token,
-          })
-          return true
-        }
-        clearCurrentUser()
-        return false
-      })
-      .catch(() => {
-        clearCurrentUser()
-        return false
-      })
-      .finally(() => {
-        defaultLoginPromise = null
-      })
-  }
-
-  return defaultLoginPromise
-}
-
-router.beforeEach(async (to) => {
-  let user = getCurrentUser()
-  if (!user && to.meta.requiresAuth) {
-    const ok = await ensureDefaultUser()
-    if (ok) user = getCurrentUser()
-  }
+router.beforeEach((to) => {
+  const user = getCurrentUser()
 
   if (to.name === 'Login' && user) {
     return '/'

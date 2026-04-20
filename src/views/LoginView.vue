@@ -67,9 +67,6 @@
         </button>
       </form>
 
-      <p class="default-tip">
-        默认账户：{{ DEFAULT_USER.username }} / {{ DEFAULT_USER.password }}
-      </p>
     </div>
   </div>
 </template>
@@ -78,28 +75,22 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login, register } from '../api/auth.js'
-import { DEFAULT_USER, saveCurrentUser } from '../utils/auth.js'
+import { saveCurrentUser } from '../utils/auth.js'
 
 const router = useRouter()
 const mode = ref('login')
 const displayName = ref('')
-const username = ref(DEFAULT_USER.username)
-const password = ref(DEFAULT_USER.password)
+const username = ref('')
+const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 
 function switchMode(nextMode) {
   mode.value = nextMode
   errorMsg.value = ''
-  if (nextMode === 'login') {
-    username.value = DEFAULT_USER.username
-    password.value = DEFAULT_USER.password
-    displayName.value = ''
-  } else {
-    username.value = ''
-    password.value = ''
-    displayName.value = ''
-  }
+  username.value = ''
+  password.value = ''
+  displayName.value = ''
 }
 
 function completeAuth(res, fallbackUsername, fallbackDisplayName) {
@@ -298,10 +289,4 @@ async function handleSubmit() {
   color: var(--accent);
 }
 
-.default-tip {
-  margin: 18px 0 0;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
 </style>

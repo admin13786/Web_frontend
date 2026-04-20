@@ -968,6 +968,75 @@
       multiple
       @change="handleAttachmentInputChange"
     />
+    <Teleport to="body">
+      <div v-if="loginPromptOpen" class="login-prompt-mask" @click.self="closeLoginPrompt">
+        <div class="login-prompt-card">
+          <div class="login-prompt-header">
+            <div>
+              <div class="login-prompt-title">登录后继续</div>
+              <p class="login-prompt-subtitle">{{ guestPromptMessage() }}</p>
+            </div>
+            <button type="button" class="login-prompt-close" @click="closeLoginPrompt">×</button>
+          </div>
+
+          <div class="login-prompt-switch">
+            <button
+              type="button"
+              class="login-prompt-switch-btn"
+              :class="{ active: loginPromptMode === 'login' }"
+              @click="switchLoginPromptMode('login')"
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              class="login-prompt-switch-btn"
+              :class="{ active: loginPromptMode === 'register' }"
+              @click="switchLoginPromptMode('register')"
+            >
+              注册
+            </button>
+          </div>
+
+          <form class="login-prompt-form" @submit.prevent="handleLoginPromptSubmit">
+            <div v-if="loginPromptMode === 'register'" class="login-prompt-field">
+              <label for="guest-login-display-name">显示名称</label>
+              <input
+                id="guest-login-display-name"
+                v-model="loginPromptDisplayName"
+                type="text"
+                placeholder="请输入显示名称"
+              />
+            </div>
+            <div class="login-prompt-field">
+              <label for="guest-login-username">用户名</label>
+              <input
+                id="guest-login-username"
+                v-model="loginPromptUsername"
+                type="text"
+                placeholder="请输入用户名"
+              />
+            </div>
+            <div class="login-prompt-field">
+              <label for="guest-login-password">密码</label>
+              <input
+                id="guest-login-password"
+                v-model="loginPromptPassword"
+                type="password"
+                :placeholder="loginPromptMode === 'register' ? '至少 6 位密码' : '请输入密码'"
+              />
+            </div>
+            <p v-if="loginPromptError" class="login-prompt-error">{{ loginPromptError }}</p>
+            <div class="login-prompt-actions">
+              <button type="button" class="login-prompt-secondary" @click="closeLoginPrompt">稍后再说</button>
+              <button type="submit" class="login-prompt-primary" :disabled="loginPromptLoading">
+                {{ loginPromptLoading ? (loginPromptMode === 'register' ? '注册中…' : '登录中…') : (loginPromptMode === 'register' ? '注册并继续' : '登录并继续') }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
     </div>
   </div>
 </template>
@@ -975,7 +1044,7 @@
 <script setup>
 import { ref, nextTick, onBeforeUnmount, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { logout as logoutApi } from '../api/auth.js'
+import { login, logout as logoutApi, register } from '../api/auth.js'
 import {
   ensureAgentDoSessionMapping,
   // fetchAgentDoSandboxPool, // [容器池功能暂时禁用]
@@ -998,14 +1067,31 @@ import WorkshopStreamProgress from '../components/WorkshopStreamProgress.vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import DeleteConversationConfirmModal from '../components/DeleteConversationConfirmModal.vue'
 import { useTheme } from '../composables/useTheme'
-import { clearCurrentUser, getCurrentUser, getUserDisplayName } from '../utils/auth.js'
-import { createEmptyConversation, removeWorkshopConversationState } from '../utils/workshopHistory.js'
+import {
+  clearCurrentUser,
+  consumeGuestTrial,
+  getAuthChangedEventName,
+  getCurrentUser,
+  getGuestSessionUser,
+  getUserDisplayName,
+  hasGuestTrialRemaining,
+  saveCurrentUser,
+} from '../utils/auth.js'
+import {
+  clearTransientWorkshopState,
+  createEmptyConversation,
+  getTransientWorkshopState,
+  removeTransientWorkshopConversationState,
+  removeWorkshopConversationState,
+  saveTransientWorkshopState,
+} from '../utils/workshopHistory.js'
 
 const router = useRouter()
 const route = useRoute()
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
+const AUTH_CHANGED_EVENT = getAuthChangedEventName()
 const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
 const DOCUMENT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.md', '.txt'])
 const IMAGE_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
@@ -1019,7 +1105,8 @@ const IMAGE_ATTACHMENT_DEFAULT_PROMPT = '请先分析我刚上传的图片，并
 const { theme } = useTheme()
 const currentUser = ref(getCurrentUser())
 const markdownMode = computed(() => (theme.value === 'light' ? 'light' : 'dark'))
-const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '未登录')
+const isAuthenticated = computed(() => Boolean(currentUser.value?.username))
+const userDisplayName = computed(() => getUserDisplayName(currentUser.value) || '游客模式')
 const isMobile = ref(false)
 const mobilePane = ref('chat')
 const mobileSidebarOpen = ref(false)
@@ -1054,6 +1141,13 @@ const uploadedAttachments = ref([])
 const attachmentUploading = ref(false)
 const attachmentUploadError = ref('')
 let attachmentSelectionSeq = 0
+const loginPromptOpen = ref(false)
+const loginPromptMode = ref('login')
+const loginPromptDisplayName = ref('')
+const loginPromptUsername = ref('')
+const loginPromptPassword = ref('')
+const loginPromptError = ref('')
+const loginPromptLoading = ref(false)
 
 const currentAttachmentAllowedExtensions = computed(() => (
   isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_ALLOWED_EXTENSIONS : IMAGE_ATTACHMENT_ALLOWED_EXTENSIONS
@@ -1073,6 +1167,97 @@ const currentAttachmentUploadedLabel = computed(() => (
 const currentAttachmentDefaultPrompt = computed(() => (
   isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_DEFAULT_PROMPT : IMAGE_ATTACHMENT_DEFAULT_PROMPT
 ))
+const currentGuestMode = computed(() => (isSkillAssistantMode.value ? 'skill_assistant' : 'workshop'))
+
+function getActiveUsername() {
+  return isAuthenticated.value
+    ? String(currentUser.value?.username || '').trim()
+    : getGuestSessionUser()
+}
+
+function syncCurrentUserFromStorage() {
+  currentUser.value = getCurrentUser()
+}
+
+function openLoginPrompt(mode = 'login') {
+  loginPromptMode.value = mode === 'register' ? 'register' : 'login'
+  loginPromptError.value = ''
+  loginPromptLoading.value = false
+  loginPromptDisplayName.value = ''
+  loginPromptUsername.value = ''
+  loginPromptPassword.value = ''
+  loginPromptOpen.value = true
+}
+
+function closeLoginPrompt() {
+  loginPromptOpen.value = false
+  loginPromptError.value = ''
+  loginPromptLoading.value = false
+}
+
+function switchLoginPromptMode(mode) {
+  loginPromptMode.value = mode === 'register' ? 'register' : 'login'
+  loginPromptError.value = ''
+}
+
+function guestPromptMessage() {
+  return currentGuestMode.value === 'skill_assistant'
+    ? '您已完成一次试用。登录或注册后可继续使用 Skill 助手，并保存对话记录。'
+    : '您已完成一次试用。登录或注册后可继续使用创意工坊，并保存对话记录。'
+}
+
+async function handleLoginPromptSubmit() {
+  loginPromptError.value = ''
+  if (!loginPromptUsername.value.trim()) {
+    loginPromptError.value = '用户名不能为空'
+    return
+  }
+  if (!loginPromptPassword.value) {
+    loginPromptError.value = '密码不能为空'
+    return
+  }
+  if (loginPromptMode.value === 'register' && loginPromptPassword.value.length < 6) {
+    loginPromptError.value = '密码至少需要 6 位'
+    return
+  }
+
+  loginPromptLoading.value = true
+  try {
+    const response = loginPromptMode.value === 'register'
+      ? await register({
+          username: loginPromptUsername.value.trim(),
+          password: loginPromptPassword.value,
+          displayName: loginPromptDisplayName.value.trim() || loginPromptUsername.value.trim(),
+        })
+      : await login({
+          username: loginPromptUsername.value.trim(),
+          password: loginPromptPassword.value,
+        })
+    if (!response?.success || !response?.token) {
+      loginPromptError.value = response?.message || (loginPromptMode.value === 'register' ? '注册失败' : '登录失败')
+      return
+    }
+    saveCurrentUser({
+      username: response.user?.username || loginPromptUsername.value.trim(),
+      displayName:
+        response.user?.displayName
+        || loginPromptDisplayName.value.trim()
+        || loginPromptUsername.value.trim(),
+      token: response.token,
+    })
+    syncCurrentUserFromStorage()
+    closeLoginPrompt()
+    await loadWorkshopHistory()
+  } catch (error) {
+    loginPromptError.value = error instanceof Error ? error.message : '网络错误，请稍后重试'
+  } finally {
+    loginPromptLoading.value = false
+  }
+}
+
+function shouldBlockGuestSend() {
+  return !isAuthenticated.value && !hasGuestTrialRemaining(currentGuestMode.value)
+}
 
 function clearLegacyStoredSkillSelection() {
   if (typeof window === 'undefined') return
@@ -1128,6 +1313,13 @@ async function persistConversationRecordById(conversationId) {
   const snapshot = normalizeConversationRecord(conversation)
   const shouldPersist = hasMeaningfulConversationContent(snapshot) || snapshot.orderIndex != null
   if (!shouldPersist) return snapshot
+  if (!isAuthenticated.value) {
+    saveTransientWorkshopState(getGuestSessionUser(), {
+      conversations: conversationList.value,
+      currentConversationId: currentConversationId.value,
+    })
+    return snapshot
+  }
   try {
     const saved = await saveWorkshopConversation(snapshot)
     if (deletedConversationIds.has(saved.id)) return saved
@@ -1559,7 +1751,7 @@ const workspaceSelectedFile = ref({
 })
 
 function buildWorkspaceRequest(conversationId = currentConversationId.value) {
-  const username = currentUser.value?.username || 'workshop_guest'
+  const username = getActiveUsername()
   const normalizedConversationId = String(conversationId || '').trim()
   return {
     username,
@@ -2849,7 +3041,7 @@ function getConversationPreviewRecovery(conversation) {
 }
 
 async function restoreConversationSessionMapping(conversation) {
-  const username = currentUser.value?.username || 'workshop_guest'
+  const username = getActiveUsername()
   const recovery = getConversationPreviewRecovery(conversation)
   if (!conversation?.id || !recovery?.agentDoSessionId) return null
   try {
@@ -2948,7 +3140,7 @@ function discardUnsavedEmptyDraftConversation(id) {
 }
 
 async function persistConversations() {
-  if (historyHydrating || !historyReady.value || !currentUser.value?.username || !currentConversationId.value) return
+  if (historyHydrating || !historyReady.value || !currentConversationId.value) return
   if (persistInFlight) return persistInFlight
   persistInFlight = (async () => {
     const snapshot = buildConversationSnapshot()
@@ -2987,6 +3179,13 @@ async function persistConversations() {
       })
     }
     conversationList.value = nextList
+    if (!isAuthenticated.value) {
+      saveTransientWorkshopState(getGuestSessionUser(), {
+        conversations: conversationList.value,
+        currentConversationId: currentConversationId.value,
+      })
+      return snapshot
+    }
     const saved = await saveWorkshopConversation(snapshot)
     if (deletedConversationIds.has(saved.id)) {
       return saved
@@ -3110,15 +3309,19 @@ async function confirmDeleteConversation() {
     null
   deletedConversationIds.add(id)
   try {
-    await deleteWorkshopConversationDeep({
-      username: currentUser.value?.username || 'workshop_guest',
-      conversationId: id,
-    })
-    removeWorkshopConversationState(
-      currentUser.value?.username || 'workshop_guest',
-      id,
-      nextActiveConversation?.id || '',
-    )
+    if (isAuthenticated.value) {
+      await deleteWorkshopConversationDeep({
+        username: currentUser.value?.username || '',
+        conversationId: id,
+      })
+      removeWorkshopConversationState(
+        currentUser.value?.username || '',
+        id,
+        nextActiveConversation?.id || '',
+      )
+    } else {
+      removeTransientWorkshopConversationState(getGuestSessionUser(), id, nextActiveConversation?.id || '')
+    }
     await removeDeletedConversationLocally(id, nextActiveConversation?.id || '')
     emitWorkshopHistoryChanged()
   } catch (e) {
@@ -3129,14 +3332,17 @@ async function confirmDeleteConversation() {
 }
 
 async function loadWorkshopHistory() {
-  if (!currentUser.value?.username) {
-    router.push('/login')
-    return
+  if (!isAuthenticated.value) {
+    const guestState = getTransientWorkshopState(getGuestSessionUser())
+    conversationList.value = Array.isArray(guestState.conversations)
+      ? guestState.conversations.map((item) => normalizeConversationRecord(item))
+      : []
+  } else {
+    const conversations = await fetchWorkshopConversations()
+    conversationList.value = Array.isArray(conversations)
+      ? conversations.map((item) => normalizeConversationRecord(item))
+      : []
   }
-  const conversations = await fetchWorkshopConversations()
-  conversationList.value = Array.isArray(conversations)
-    ? conversations.map((item) => normalizeConversationRecord(item))
-    : []
   const routeConversationId = String(route.query.cid || '').trim()
   let current = conversationList.value.find((item) => item.id === routeConversationId) || conversationList.value[0]
   if (!current) {
@@ -3191,9 +3397,14 @@ function hasConversationChanged(existingConversation, snapshot) {
 
 async function logout() {
   await flushPendingPersist()
+  if (!isAuthenticated.value) {
+    router.push('/login')
+    return
+  }
   await logoutApi().catch(() => null)
   clearCurrentUser()
-  router.push('/login')
+  syncCurrentUserFromStorage()
+  await router.push('/workshop')
 }
 
 function toggleSidebar() {
@@ -3255,6 +3466,14 @@ async function commitRename(id) {
           title,
         }
       : nextList[index]
+    if (!isAuthenticated.value) {
+      saveTransientWorkshopState(getGuestSessionUser(), {
+        conversations: conversationList.value,
+        currentConversationId: currentConversationId.value,
+      })
+      emitWorkshopHistoryChanged()
+      return
+    }
     const saved = await saveWorkshopConversation(payload)
     const savedIndex = conversationList.value.findIndex((item) => item.id === id)
     if (savedIndex >= 0) {
@@ -4233,10 +4452,17 @@ async function sendMessage() {
     || (uploadedAttachments.value.length > 0 && messages.value.length === 0)
   )
   if ((!text && !shouldSendDefaultPrompt) || busy.value) return
+  if (shouldBlockGuestSend()) {
+    openLoginPrompt('login')
+    return
+  }
 
   if (!currentConversationId.value) {
     const createdConversation = await createNewConversation({ startRename: false })
     if (!createdConversation?.id) return
+  }
+  if (!isAuthenticated.value && hasGuestTrialRemaining(currentGuestMode.value)) {
+    consumeGuestTrial(currentGuestMode.value)
   }
 
   if (currentFunctionMode.value === 'skill_assistant') {
@@ -4293,7 +4519,7 @@ async function sendMessage() {
     context: requestText,
     systemPrompt: buildModeSystemPrompt(generationMode.value),
     conversationId: currentConversationId.value || `conv-${Date.now()}`,
-    username: currentUser.value?.username || 'workshop_guest',
+    username: getActiveUsername(),
     title: title || chatTitle.value || 'Workshop Project',
     generationMode: generationMode.value,
     manualSkillIds: selectedSkillIds.value,
@@ -4314,7 +4540,7 @@ async function sendMessage() {
     preparePreviewForPendingRequest(previousPreviewState)
 
     const conversationId = currentConversationId.value || `conv-${Date.now()}`
-    const username = currentUser.value?.username || 'workshop_guest'
+    const username = getActiveUsername()
     const requestTitle = title || chatTitle.value || 'Workshop Project'
     const systemPrompt = buildModeSystemPrompt(generationMode.value)
 
@@ -4521,12 +4747,18 @@ function shouldForkFailedSingleHtmlConversation() {
   return true
 }
 
+async function handleAuthChanged() {
+  syncCurrentUserFromStorage()
+  await loadWorkshopHistory()
+}
+
 onMounted(async () => {
   if (typeof window !== 'undefined') {
     clearLegacyStoredSkillSelection()
     window.addEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
     window.addEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
     window.addEventListener(WORKSHOP_SKILL_SELECTED_EVENT, handleSkillSelectionChanged)
+    window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
     window.addEventListener('resize', syncViewportMode)
     syncViewportMode()
   }
@@ -4615,6 +4847,7 @@ onBeforeUnmount(() => {
     window.removeEventListener(WORKSHOP_CREATE_CONVERSATION_EVENT, handleExternalCreateConversation)
     window.removeEventListener(WORKSHOP_CONVERSATION_DELETED_EVENT, handleExternalConversationDeleted)
     window.removeEventListener(WORKSHOP_SKILL_SELECTED_EVENT, handleSkillSelectionChanged)
+    window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
     window.removeEventListener('resize', syncViewportMode)
   }
   stopDrag()
@@ -7341,6 +7574,156 @@ watch(
   color: #c9d1d9;
   background: rgba(0,0,0,0.2);
   white-space: pre;
+}
+
+.login-prompt-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 10, 18, 0.58);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.login-prompt-card {
+  width: min(460px, 100%);
+  border-radius: 24px;
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-elevated);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  padding: 24px;
+}
+
+.login-prompt-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.login-prompt-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.login-prompt-subtitle {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 0.92rem;
+}
+
+.login-prompt-close {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--bg-glass-border);
+  border-radius: 12px;
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.login-prompt-switch {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-muted);
+}
+
+.login-prompt-switch-btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.login-prompt-switch-btn.active {
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--text-primary);
+}
+
+.login-prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.login-prompt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-prompt-field label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.login-prompt-field input {
+  padding: 13px 15px;
+  border: 1px solid var(--bg-glass-border);
+  border-radius: 14px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.login-prompt-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.login-prompt-error {
+  margin: 0;
+  color: #fda4af;
+  font-size: 0.88rem;
+}
+
+.login-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.login-prompt-secondary,
+.login-prompt-primary {
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-prompt-secondary {
+  border: 1px solid var(--bg-glass-border);
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+.login-prompt-primary {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.login-prompt-primary:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 @media (max-width: 900px) {
