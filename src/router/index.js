@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { trackPageView } from '../api/analytics.js'
 import { getCurrentUser } from '../utils/auth.js'
 
 const routes = [
@@ -112,6 +113,10 @@ router.beforeEach((to) => {
   }
 
   return true
+})
+
+router.afterEach((to) => {
+  void trackPageView(to)
 })
 
 export default router

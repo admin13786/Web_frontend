@@ -1202,8 +1202,8 @@ function switchLoginPromptMode(mode) {
 
 function guestPromptMessage() {
   return currentGuestMode.value === 'skill_assistant'
-    ? '您已完成一次试用。登录或注册后可继续使用 Skill 助手，并保存对话记录。'
-    : '您已完成一次试用。登录或注册后可继续使用创意工坊，并保存对话记录。'
+    ? '您已完成一次试用。请登录或注册后可继续使用 Skill 助手，并保存对话记录。'
+    : '您已完成一次试用。请登录或注册后可继续使用创意工坊，并保存对话记录。'
 }
 
 async function handleLoginPromptSubmit() {
