@@ -1,61 +1,75 @@
 <template>
   <div class="brief-page">
     <nav class="brief-nav">
-      <router-link to="/channel" class="back-link">&larr; 返回AI新闻早咖啡</router-link>
-      <a v-if="article?.url" class="open-origin" :href="article.url" target="_blank" rel="noreferrer noopener">
+      <router-link to="/channel" class="brief-back">← 返回AI新闻早咖啡</router-link>
+      <a
+        v-if="article?.url"
+        class="brief-nav__link"
+        :href="article.url"
+        target="_blank"
+        rel="noreferrer noopener"
+      >
         打开原网页 ↗
       </a>
     </nav>
 
-    <div v-if="loading" class="load-state">
-      <span class="load-dot" /><span class="load-dot" /><span class="load-dot" />
-    </div>
-    <div v-else-if="error" class="load-error">
+    <section v-if="loading" class="brief-state">
+      <span class="state-kicker">AI BRIEF</span>
+      <h2>正在整理这一条新闻的 AI 简报</h2>
+      <p>会优先读取后端已经生成的简报，必要时再实时补一版。</p>
+    </section>
+
+    <section v-else-if="error" class="brief-state brief-state--error">
+      <span class="state-kicker">UNAVAILABLE</span>
+      <h2>这条简报暂时没有生成成功</h2>
       <p>{{ error }}</p>
-      <button type="button" class="retry-btn" @click="loadAll">重试</button>
-    </div>
+      <button type="button" class="retry-btn" @click="loadAll">重新加载</button>
+    </section>
 
     <article v-else class="brief-article">
-      <header class="article-header">
-        <time v-if="article?.published_at" class="article-date">{{ formatDate(article.published_at) }}</time>
-        <h1 class="article-headline">{{ brief?.headline || article?.title || '' }}</h1>
+      <header class="brief-hero">
+        <time v-if="displayDate" class="hero-date">{{ displayDate }}</time>
+        <h1 class="hero-title">{{ brief?.headline || article?.title || '' }}</h1>
+        <div class="brief-divider" />
       </header>
 
-      <section class="article-card">
-        <div class="card-title-row">
-          <span class="card-index">01</span>
-          <h2 class="card-title">{{ brief?.headline || article?.title || '' }}</h2>
+      <section class="brief-card">
+        <div class="brief-card__head">
+          <span class="brief-card__index">01</span>
+          <h2 class="brief-card__title">{{ brief?.headline || article?.title || '' }}</h2>
         </div>
 
-        <div v-if="displayParagraphs.length" class="card-body">
-          <p v-for="(p, i) in displayParagraphs" :key="i" class="card-para">{{ p }}</p>
+        <div class="brief-card__body">
+          <p
+            v-for="(paragraph, index) in displayParagraphs"
+            :key="`${routeNewsId}-${index}`"
+            class="brief-paragraph"
+          >
+            {{ paragraph }}
+          </p>
         </div>
 
-        <div v-if="brief?.tags?.length" class="card-takeaways">
-          <div v-for="t in brief.tags" :key="t" class="takeaway-item">{{ t }}</div>
+        <div v-if="brief?.tags?.length" class="tag-list">
+          <span v-for="tag in brief.tags" :key="tag" class="tag-chip">{{ tag }}</span>
         </div>
 
-        <div v-if="brief?.sources?.length" class="card-sources">
-          <div class="sources-label">来源</div>
-          <div class="sources-list">
+        <section v-if="normalizedSources.length" class="source-section">
+          <span class="source-section__title">来源</span>
+          <div class="source-stack">
             <a
-              v-for="(s, i) in brief.sources"
-              :key="i"
-              class="source-item"
-              :href="s.url"
+              v-for="(source, index) in normalizedSources"
+              :key="`${source.url || source.label}-${index}`"
+              class="source-link"
+              :href="source.url"
               target="_blank"
               rel="noreferrer noopener"
             >
-              <span class="source-text">{{ s.label || '来源链接' }}</span>
-              <span class="source-domain">{{ s.domain || extractDomain(s.url) }}</span>
+              <strong>{{ source.label }}</strong>
+              <span>{{ source.domain }}</span>
             </a>
           </div>
-        </div>
+        </section>
       </section>
-
-      <footer class="article-footer">
-        <span class="footer-source">{{ footerDomain }}</span>
-      </footer>
     </article>
   </div>
 </template>
@@ -63,7 +77,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getNewsArticle, generateNewsBrief } from '../api/newsBrief.js'
+import { generateNewsBrief, getNewsArticle } from '../api/newsBrief.js'
 
 const route = useRoute()
 const routeNewsId = computed(() => String(route.params.newsId || '').trim())
@@ -73,64 +87,67 @@ const error = ref('')
 const article = ref(null)
 const brief = ref(null)
 
-function cleanPara(s) {
-  return (s || '').replace(/[。.]\s*来源\s*$/, '。').replace(/\s*来源\s*$/, '').trim()
+const displayDate = computed(() => {
+  return formatDate(article.value?.published_at || article.value?.publishedAt || '')
+})
+
+const normalizedSources = computed(() => {
+  const base = Array.isArray(brief.value?.sources) ? brief.value.sources : []
+  const mapped = base
+    .map((item) => {
+      const url = String(item?.url || '').trim()
+      const label = String(item?.label || article.value?.source || '原文来源').trim()
+      const domain = extractDomain(url) || label
+      return url || label ? { url, label, domain } : null
+    })
+    .filter(Boolean)
+
+  if (mapped.length) return mapped
+
+  const url = String(article.value?.url || '').trim()
+  if (!url) return []
+  return [{
+    url,
+    label: String(article.value?.source || '原文来源').trim() || '原文来源',
+    domain: extractDomain(url) || url,
+  }]
+})
+
+function cleanParagraph(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 const displayParagraphs = computed(() => {
-  const lead = cleanPara(brief.value?.lead || '')
-  const rawParas = brief.value?.paragraphs
-  let paras = Array.isArray(rawParas) ? rawParas.map(cleanPara).filter(Boolean) : []
+  const lead = cleanParagraph(brief.value?.lead || '')
+  const rawParagraphs = Array.isArray(brief.value?.paragraphs) ? brief.value.paragraphs : []
+  const paragraphs = rawParagraphs.map(cleanParagraph).filter(Boolean)
 
-  let result
-  if (!paras.length) {
-    result = lead ? [lead] : []
-  } else {
-    const isDup = paras.some((pt) => pt === lead || lead.startsWith(pt) || pt.startsWith(lead))
-    result = isDup ? paras : (lead ? [lead, ...paras] : paras)
+  let result = paragraphs.length ? paragraphs : (lead ? [lead] : [])
+
+  if (lead && !result.some((item) => item === lead || item.includes(lead) || lead.includes(item))) {
+    result = [lead, ...result]
   }
 
   if (result.length <= 1 && article.value) {
-    const summary = cleanPara(article.value.summary || '')
-    const content = cleanPara(article.value.content || '')
-    const existing = result.join('')
-    if (summary && !existing.includes(summary) && !summary.includes(existing)) {
-      result.push(summary)
-    }
-    if (content && content.length > 60) {
-      const contentParas = content.split(/\n+/).map(p => p.trim()).filter(p => p.length > 20)
-      for (const cp of contentParas) {
-        if (!existing.includes(cp) && !result.some(r => r.includes(cp) || cp.includes(r))) {
-          result.push(cp)
-        }
-        if (result.length >= 4) break
+    const summary = cleanParagraph(article.value.summary || '')
+    const content = String(article.value.content || article.value.text || '')
+      .split(/\n+/)
+      .map((item) => cleanParagraph(item))
+      .filter((item) => item.length > 20)
+
+    if (summary && !result.includes(summary)) result.push(summary)
+    for (const item of content) {
+      if (!result.some((existing) => existing.includes(item) || item.includes(existing))) {
+        result.push(item)
       }
+      if (result.length >= 4) break
     }
   }
 
   return result.filter(Boolean)
 })
-
-const footerDomain = computed(() => {
-  const url = article.value?.url || ''
-  return extractDomain(url) || article.value?.source || ''
-})
-
-function isNumericId(id) {
-  return /^[0-9]+$/.test(String(id || ''))
-}
-
-function formatDate(raw) {
-  try {
-    const d = new Date(raw)
-    const y = d.getFullYear()
-    const m = d.getMonth() + 1
-    const day = d.getDate()
-    return `${y}年${m}月${day}日`
-  } catch {
-    return ''
-  }
-}
 
 function extractDomain(url) {
   try {
@@ -140,321 +157,358 @@ function extractDomain(url) {
   }
 }
 
+function formatDate(raw) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function isNumericId(id) {
+  return /^[0-9]+$/.test(String(id || ''))
+}
+
 async function loadAll() {
   loading.value = true
   error.value = ''
   article.value = null
   brief.value = null
 
-  const id = routeNewsId.value
-  if (!isNumericId(id)) {
-    error.value = `该条新闻暂不支持概述渲染（newsId：${id}）`
+  if (!isNumericId(routeNewsId.value)) {
+    error.value = `该条新闻暂不支持生成简报（newsId: ${routeNewsId.value}）`
     loading.value = false
     return
   }
 
   try {
-    const a = await getNewsArticle(id)
-    article.value = a
-    const b = await generateNewsBrief(Number(id))
-    brief.value = b
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    const [articleData, briefData] = await Promise.all([
+      getNewsArticle(routeNewsId.value),
+      generateNewsBrief(Number(routeNewsId.value)),
+    ])
+    article.value = articleData
+    brief.value = briefData
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
   } finally {
     loading.value = false
   }
 }
 
 onMounted(loadAll)
-watch(
-  () => routeNewsId.value,
-  () => loadAll(),
-)
+watch(() => routeNewsId.value, loadAll)
 </script>
 
 <style scoped>
 .brief-page {
-  min-height: 100%;
-  padding: 8px 0 40px;
-  background: transparent;
-  overflow: visible;
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
-/* ── 顶部导航 ── */
 .brief-nav {
-  max-width: 720px;
-  margin: 0 auto 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 24px;
+  padding-top: 4px;
 }
 
-.back-link {
-  color: var(--text-muted);
+.brief-back {
+  color: var(--text-secondary);
   text-decoration: none;
-  font-size: 0.88rem;
+  font-size: 0.98rem;
   transition: color var(--transition-fast);
 }
-.back-link:hover {
+
+.brief-back:hover {
   color: var(--accent);
 }
 
-.open-origin {
-  color: var(--accent);
+.brief-nav__link {
+  color: #6d76ff;
   text-decoration: none;
-  font-size: 0.86rem;
-  opacity: 0.85;
-  transition: opacity var(--transition-fast);
-}
-.open-origin:hover {
-  opacity: 1;
-  text-decoration: underline;
+  font-size: 1rem;
+  transition:
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
-/* ── 加载态 ── */
-.load-state {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 80px 24px;
-  text-align: center;
-  display: flex;
-  gap: 6px;
-  justify-content: center;
+.brief-nav__link:hover {
+  color: #515cff;
+  transform: translateY(-1px);
 }
 
-.load-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.5;
-  animation: dot-pulse 1.4s ease-in-out infinite;
-}
-.load-dot:nth-child(2) { animation-delay: 0.2s; }
-.load-dot:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes dot-pulse {
-  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1.1); }
+.brief-state {
+  padding: 36px;
+  border-radius: 32px;
+  border: 1px solid var(--border-soft);
+  background:
+    radial-gradient(circle at top center, rgba(158, 187, 255, 0.18), transparent 44%),
+    linear-gradient(180deg, rgba(249, 251, 255, 0.96), rgba(243, 246, 252, 0.94));
+  box-shadow: var(--shadow-soft);
 }
 
-.load-error {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 24px;
-  text-align: center;
+.brief-state--error {
+  border-color: var(--danger-border);
+  background:
+    radial-gradient(circle at top center, rgba(255, 176, 176, 0.14), transparent 44%),
+    linear-gradient(180deg, rgba(255, 251, 251, 0.96), rgba(250, 241, 241, 0.94));
+}
+
+.state-kicker {
+  display: inline-flex;
+  font-family: var(--font-family-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kicker-color);
+}
+
+.brief-state h2 {
+  margin-top: 14px;
+  font-family: var(--font-family-display);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+}
+
+.brief-state p {
+  margin-top: 12px;
+  max-width: 56ch;
+  line-height: 1.8;
   color: var(--text-secondary);
 }
 
 .retry-btn {
-  margin-top: 14px;
-  padding: 10px 20px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-lg);
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.retry-btn:hover {
-  background: var(--accent-hover);
-}
-
-/* ── 文章主体 ── */
-.brief-article {
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-/* ── 文章头部：日期 + 大标题 + 副标题 ── */
-.article-header {
-  text-align: center;
-  padding: 0 8px 32px;
-  border-bottom: 1px solid var(--bg-glass-border);
-  margin-bottom: 32px;
-}
-
-.article-date {
-  display: block;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
-  margin-bottom: 18px;
-}
-
-.article-headline {
-  margin: 0 0 16px;
-  font-size: 1.75rem;
-  font-weight: 800;
-  line-height: 1.35;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-
-/* ── 内容卡片 ── */
-.article-card {
-  background: var(--bg-card);
-  border: 1px solid var(--bg-glass-border);
-  border-radius: var(--radius-xl);
-  padding: 28px 28px 24px;
-  box-shadow: var(--shadow-soft);
-}
-
-.card-title-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 22px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.card-index {
-  flex-shrink: 0;
-  font-family: var(--font-family-display);
-  font-weight: 300;
-  font-size: 1.5rem;
-  color: var(--text-muted);
-  line-height: 1.3;
-  opacity: 0.6;
-}
-
-.card-title {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  line-height: 1.4;
-  color: var(--text-primary);
-}
-
-/* ── 段落 ── */
-.card-body {
-  margin-bottom: 24px;
-}
-
-.card-para {
-  margin: 0 0 16px;
-  font-size: 0.95rem;
-  line-height: 1.9;
-  color: var(--text-secondary);
-  text-align: justify;
-}
-.card-para:last-child {
-  margin-bottom: 0;
-}
-
-/* ── 关键要点 / 标签 → 胶囊药丸样式 ── */
-.card-takeaways {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 24px;
-  padding-top: 4px;
-}
-
-.takeaway-item {
+  margin-top: 18px;
   display: inline-flex;
   align-items: center;
-  padding: 8px 18px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  justify-content: center;
+  padding: 11px 16px;
   border-radius: 999px;
-  font-size: 0.84rem;
-  line-height: 1.4;
-  color: var(--accent);
-  font-weight: 500;
-  white-space: nowrap;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-inset);
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
-.takeaway-item:hover {
-  background: rgba(99, 102, 241, 0.14);
-  border-color: rgba(99, 102, 241, 0.3);
+.retry-btn:hover {
+  transform: translateY(-1px);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
 }
 
-/* ── 来源 ── */
-.card-sources {
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.sources-label {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-  letter-spacing: 0.04em;
-}
-
-.sources-list {
+.brief-article {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 28px;
 }
 
-.source-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  padding: 6px 0;
-  transition: opacity var(--transition-fast);
-}
-.source-item:hover {
-  opacity: 0.8;
+.brief-hero {
+  padding: 24px 28px 18px;
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at top center, rgba(158, 187, 255, 0.22), transparent 56%),
+    linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(242, 245, 251, 0.82));
 }
 
-.source-text {
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  line-height: 1.4;
-}
-
-.source-domain {
-  font-size: 0.78rem;
+.hero-date {
+  display: block;
+  text-align: center;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
 }
 
-/* ── 底部标签行 ── */
-.article-footer {
-  margin-top: 20px;
+.hero-title {
+  margin: 24px auto 0;
+  max-width: 14ch;
+  text-align: center;
+  font-family: var(--font-family-display);
+  font-size: clamp(2.3rem, 4.8vw, 4rem);
+  line-height: 1.18;
+  color: #1d2940;
+}
+
+.brief-divider {
+  height: 1px;
+  margin-top: 34px;
+  background: linear-gradient(90deg, transparent, rgba(95, 111, 142, 0.24), transparent);
+}
+
+.brief-card {
+  padding: 40px 42px 36px;
+  border-radius: 34px;
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 251, 255, 0.92)),
+    var(--bg-card);
+  box-shadow:
+    0 26px 60px rgba(157, 176, 214, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.brief-card__head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.brief-card__index {
+  padding-top: 4px;
+  font-family: var(--font-family-display);
+  font-size: 1.95rem;
+  line-height: 1;
+  color: #afb8c8;
+}
+
+.brief-card__title {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: clamp(1.78rem, 3vw, 2.45rem);
+  line-height: 1.3;
+  color: #1d2940;
+}
+
+.brief-card__body {
+  margin-top: 32px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.brief-paragraph {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.95;
+  color: #5d6f8e;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  padding: 10px 0 0;
+  margin-top: 28px;
 }
 
-.footer-source {
-  font-size: 0.82rem;
-  color: var(--text-muted);
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(120, 132, 255, 0.08);
+  border: 1px solid rgba(120, 132, 255, 0.18);
+  color: #6872ff;
+  font-size: 0.9rem;
 }
 
-/* ── 响应式 ── */
-@media (max-width: 640px) {
+.source-section {
+  margin-top: 40px;
+}
+
+.source-section__title {
+  display: inline-flex;
+  color: #8a97ab;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.source-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.source-link {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.source-link strong {
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: #2a3448;
+  transition: color var(--transition-fast);
+}
+
+.source-link span {
+  color: #8a96aa;
+  font-size: 0.9rem;
+  transition: color var(--transition-fast);
+}
+
+.source-link:hover strong {
+  color: var(--accent);
+}
+
+.source-link:hover span {
+  color: #6f7d94;
+}
+
+@media (max-width: 1080px) {
   .brief-page {
-    padding: 16px 12px 40px;
+    width: min(920px, 100%);
   }
-  .article-headline {
-    font-size: 1.4rem;
+}
+
+@media (max-width: 720px) {
+  .brief-page {
+    gap: 20px;
+    width: 100%;
   }
-  .article-card {
-    padding: 20px 18px 18px;
-  }
-  .card-title-row {
+
+  .brief-nav {
+    flex-wrap: wrap;
     gap: 10px;
   }
-  .card-index {
-    font-size: 1.25rem;
+
+  .brief-hero {
+    padding: 18px 18px 14px;
+    border-radius: 24px;
   }
-  .card-title {
-    font-size: 1.05rem;
+
+  .hero-title {
+    max-width: none;
+    font-size: 2rem;
+  }
+
+  .brief-divider {
+    margin-top: 22px;
+  }
+
+  .brief-card {
+    padding: 24px 20px 26px;
+    border-radius: 24px;
+  }
+
+  .brief-card__head {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .brief-card__index {
+    font-size: 1.6rem;
+  }
+
+  .brief-card__body {
+    margin-top: 22px;
+    gap: 18px;
+  }
+
+  .source-link {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
   }
 }
 </style>

@@ -1,5 +1,6 @@
 import { request } from './client.js'
 import { getCurrentUser, getGuestSessionUser } from '../utils/auth.js'
+import { FUNCTION_MODE, getRouteFunctionMode } from '../utils/functionMode.js'
 
 function resolvePageKey(route) {
   const path = String(route?.path || '').trim()
@@ -9,10 +10,8 @@ function resolvePageKey(route) {
   if (/^\/news\/[^/]+$/i.test(path)) return 'news_detail'
   if (/^\/brief\/[^/]+$/i.test(path)) return 'news_brief'
   if (path === '/home') return 'home'
-  if (path === '/workshop') {
-    return String(route?.query?.fm || '').trim() === 'skill_assistant'
-      ? 'skill_assistant'
-      : 'workshop'
+  if (path === '/workshop' || path === '/skills') {
+    return getRouteFunctionMode(route) === FUNCTION_MODE.SKILL_ASSISTANT ? 'skill_assistant' : 'workshop'
   }
   return ''
 }

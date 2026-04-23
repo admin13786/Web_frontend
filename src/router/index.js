@@ -1,25 +1,38 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { trackPageView } from '../api/analytics.js'
-import { getCurrentUser } from '../utils/auth.js'
+import {
+  getCurrentUser,
+  getDefaultRouteForUser,
+  isAdminUser,
+} from '../utils/auth.js'
+import {
+  FUNCTION_MODE,
+  getPathForFunctionMode,
+  normalizeFunctionMode,
+} from '../utils/functionMode.js'
+
+function resolveAppHome() {
+  return getDefaultRouteForUser(getCurrentUser())
+}
 
 const routes = [
   {
     path: '/',
     component: () => import('../layouts/AppShell.vue'),
-    meta: { requiresAuth: false },
+    meta: { requiresAuth: true },
     children: [
       {
         path: '',
-        redirect: '/workshop',
+        redirect: () => resolveAppHome(),
       },
       {
         path: 'home',
         name: 'Home',
         component: () => import('../views/HomeView.vue'),
         meta: {
-          requiresAuth: false,
-          title: '欢迎页',
-          description: '选择工作区并开始新的内容创作流程',
+          requiresAuth: true,
+          title: '灵境首页',
+          description: '从新闻、工坊与课堂三个入口开始今天的内容工作流。',
         },
       },
       {
@@ -27,9 +40,9 @@ const routes = [
         name: 'Channel',
         component: () => import('../views/ChannelView.vue'),
         meta: {
-          requiresAuth: false,
-          title: 'AI新闻早咖啡',
-          description: '查看热点排行与讲解入口',
+          requiresAuth: true,
+          title: 'AI趣闻萃取',
+          description: '查看今日热点、AI概览与延伸阅读入口。',
         },
       },
       {
@@ -37,9 +50,21 @@ const routes = [
         name: 'Workshop',
         component: () => import('../views/WorkshopView.vue'),
         meta: {
-          requiresAuth: false,
+          requiresAuth: true,
+          functionMode: FUNCTION_MODE.WORKSHOP,
           title: '创意工坊',
-          description: '对话生成与结果预览',
+          description: '把需求整理成可预览页面、交互原型与创意作品。',
+        },
+      },
+      {
+        path: 'skills',
+        name: 'SkillAssistant',
+        component: () => import('../views/WorkshopView.vue'),
+        meta: {
+          requiresAuth: true,
+          functionMode: FUNCTION_MODE.SKILL_ASSISTANT,
+          title: 'Skill 助手',
+          description: '把任务交给 Agent，并结合 Skills 与附件完成交付型输出。',
         },
       },
       {
@@ -49,7 +74,7 @@ const routes = [
         meta: {
           requiresAuth: true,
           title: 'OpenMAIC',
-          description: '内嵌应用入口',
+          description: '跳转进入 OpenMAIC 课堂体验。',
         },
       },
       {
@@ -57,9 +82,9 @@ const routes = [
         name: 'EduRepo',
         component: () => import('../views/EduRepoView.vue'),
         meta: {
-          requiresAuth: false,
+          requiresAuth: true,
           title: 'EduRepo',
-          description: 'AI 科普内容加工与教育内容浏览',
+          description: '将热点内容加工为更适合沉浸阅读的知识卡片。',
         },
       },
       {
@@ -71,9 +96,9 @@ const routes = [
         name: 'NewsDetail',
         component: () => import('../views/NewsDetailView.vue'),
         meta: {
-          requiresAuth: false,
-          title: '资讯详情',
-          description: '查看原文与资讯详情',
+          requiresAuth: true,
+          title: '新闻原文',
+          description: '查看原文线索、来源信息与后续讲解入口。',
         },
       },
       {
@@ -81,18 +106,33 @@ const routes = [
         name: 'NewsBrief',
         component: () => import('../views/NewsBriefView.vue'),
         meta: {
-          requiresAuth: false,
-          title: '简报详情',
-          description: '从AI新闻早咖啡跳转查看摘要',
+          requiresAuth: true,
+          title: 'AI简报',
+          description: '用更轻松易读的方式理解同一条新闻。',
         },
       },
     ],
   },
   {
+    path: '/admin/monitor',
+    name: 'AdminMonitor',
+    component: () => import('../views/AdminMonitorRedirectView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '运营看板',
+      description: '进入爬虫与推送控制台。',
+    },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/LoginView.vue'),
-    meta: { requiresAuth: false },
+    meta: {
+      requiresAuth: false,
+      title: '登录',
+      description: '登录后进入你的灵境工作台。',
+    },
   },
 ]
 
@@ -102,14 +142,35 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const user = getCurrentUser()
-
-  if (to.name === 'Login' && user) {
-    return '/'
+  if ((to.path === '/workshop' || to.path === '/skills') && 'fm' in (to.query || {})) {
+    const nextMode = normalizeFunctionMode(to.query.fm)
+    const nextPath = getPathForFunctionMode(nextMode)
+    const { fm: _ignoredMode, ...restQuery } = to.query || {}
+    return {
+      path: nextPath,
+      query: restQuery,
+    }
   }
 
-  if (to.meta.requiresAuth && !user) {
-    return '/login'
+  const user = getCurrentUser()
+  const isLoggedIn = Boolean(user?.username && user?.token)
+
+  if (to.name === 'Login') {
+    if (!isLoggedIn) return true
+    return getDefaultRouteForUser(user)
+  }
+
+  if (to.meta.requiresAuth && !isLoggedIn) {
+    return {
+      name: 'Login',
+      query: {
+        redirect: to.fullPath,
+      },
+    }
+  }
+
+  if (to.meta.requiresAdmin && !isAdminUser(user)) {
+    return getDefaultRouteForUser(user)
   }
 
   return true

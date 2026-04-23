@@ -23,3 +23,19 @@ dist/
 .env.*
 !.env.example
 *:Zone.Identifier
+
+# Local verification / debug artifacts
+tmp/
+tmp_*
+tmp-*.zip
+verify_*.cjs
+verify-*.png
+playwright-*.png
+playwright-debug.mjs
+inspect_skill_modal.cjs
+local-check.mjs
+workshop-e2e-check.mjs
+welcome-local-after-fix.png
+workshop-welcome-check.png
+vite-dev.*.log
+*.tmp

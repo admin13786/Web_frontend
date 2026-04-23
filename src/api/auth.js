@@ -1,21 +1,40 @@
 import { request } from './client.js'
 import { USE_AUTH_MOCK } from '../config.js'
 
-const delay = (ms) => new Promise((r) => setTimeout(r, ms))
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const MOCK_USER_STORE_KEY = 'mock_auth_users_v1'
 
+function normalizeMockRole(user, username = '') {
+  const role = String(user?.role || '').trim().toLowerCase()
+  if (role === 'admin') return 'admin'
+  if (String(username || '').trim().toLowerCase() === 'admin') return 'admin'
+  return 'user'
+}
+
+function buildUserPayload(user, username) {
+  const role = normalizeMockRole(user, username)
+  return {
+    username,
+    displayName: user?.displayName || username,
+    role,
+    isAdmin: role === 'admin',
+  }
+}
+
 function readMockUsers() {
+  const defaultUsers = {
+    admin: { password: 'admin123', displayName: '管理员', role: 'admin' },
+    workshop_guest: { password: '123456', displayName: '默认用户', role: 'user' },
+  }
   try {
     const raw = localStorage.getItem(MOCK_USER_STORE_KEY)
     const parsed = raw ? JSON.parse(raw) : {}
     return {
-      workshop_guest: { password: '123456', displayName: '默认用户' },
+      ...defaultUsers,
       ...parsed,
     }
   } catch {
-    return {
-      workshop_guest: { password: '123456', displayName: '默认用户' },
-    }
+    return defaultUsers
   }
 }
 
@@ -23,9 +42,8 @@ function writeMockUsers(users) {
   localStorage.setItem(MOCK_USER_STORE_KEY, JSON.stringify(users))
 }
 
-/** Mock 登录：任意用户名密码均成功，返回模拟 token */
 async function mockLogin(username, password) {
-  await delay(400)
+  await delay(300)
   const users = readMockUsers()
   const user = users[username]
   if (!user || user.password !== password) {
@@ -40,16 +58,13 @@ async function mockLogin(username, password) {
     data: {
       success: true,
       token: `mock_${Date.now()}_${username}`,
-      user: {
-        username,
-        displayName: user.displayName || username,
-      },
+      user: buildUserPayload(user, username),
     },
   }
 }
 
 async function mockRegister(username, password, displayName) {
-  await delay(400)
+  await delay(300)
   const users = readMockUsers()
   if (users[username]) {
     return {
@@ -61,6 +76,7 @@ async function mockRegister(username, password, displayName) {
   users[username] = {
     password,
     displayName: displayName || username,
+    role: 'user',
   }
   writeMockUsers(users)
   return {
@@ -68,25 +84,17 @@ async function mockRegister(username, password, displayName) {
     data: {
       success: true,
       token: `mock_${Date.now()}_${username}`,
-      user: {
-        username,
-        displayName: displayName || username,
-      },
+      user: buildUserPayload(users[username], username),
     },
   }
 }
 
-/**
- * 登录
- * @param {{ username: string, password: string }} payload
- * @returns {Promise<{ success: boolean, token?: string, message?: string }>}
- */
 export async function login(payload) {
   if (USE_AUTH_MOCK) {
     const res = await mockLogin(payload.username, payload.password)
-    if (!res.ok) return res.data
     return res.data
   }
+
   const { ok, status, data } = await request('/api/auth/sessions', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -94,7 +102,7 @@ export async function login(payload) {
   if (!ok) {
     return {
       success: false,
-      message: data?.message || (status === 401 ? '用户名或密码错误' : '登录失败'),
+      message: data?.detail || data?.message || (status === 401 ? '用户名或密码错误' : '登录失败'),
     }
   }
   return data
@@ -105,6 +113,7 @@ export async function register(payload) {
     const res = await mockRegister(payload.username, payload.password, payload.displayName)
     return res.data
   }
+
   const { ok, status, data } = await request('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -123,6 +132,17 @@ export async function register(payload) {
     }
   }
   return data
+}
+
+export async function fetchCurrentSession() {
+  if (USE_AUTH_MOCK) {
+    return { success: false, user: null, status: 0 }
+  }
+  const { ok, status, data } = await request('/api/auth/me')
+  if (!ok || !data?.success) {
+    return { success: false, user: null, status }
+  }
+  return { ...data, status }
 }
 
 export async function logout() {

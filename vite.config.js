@@ -14,6 +14,11 @@ export default defineConfig({
     // 与 Crawl 默认端口 8000 错开，否则无法同时跑 npm run dev 与本机/容器 Crawl
     port: 5173,
     proxy: {
+      // 必须放在 /api/workshop 之前，否则 /api/workshop-history 会被错误命中成 Workshop 服务
+      '/api/workshop-history': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       // 开发环境代理：前端请求 /openmaic/api/xxx → 转发到 http://localhost:3000/api/xxx
       // 生产环境此代理不生效，需要直接配置 VITE_OPENMAIC_BASE_URL 或使用 Nginx
       '/openmaic': {
@@ -36,7 +41,7 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/api/workshop-history': {
+      '/api/news': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
@@ -58,6 +63,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       // EduRepo 后端代理
+      '/api/analytics': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api/edu': {
         target: 'http://localhost:9010',
         changeOrigin: true,

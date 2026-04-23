@@ -6,6 +6,22 @@ import { getAuthToken } from './client.js'
 
 const API_BASE = import.meta.env.VITE_WORKSHOP_API_URL || '/api/workshop'
 
+function buildWorkshopHeaders(headersInit = {}) {
+  const headers = new Headers(headersInit || {})
+  const token = getAuthToken()
+  if (token) headers.set('Authorization', 'Bearer ' + token)
+  return headers
+}
+
+const nativeFetch = globalThis.fetch.bind(globalThis)
+
+function fetch(input, options = {}) {
+  return nativeFetch(input, {
+    ...options,
+    headers: buildWorkshopHeaders(options.headers),
+  })
+}
+
 function getApiOrigin() {
   if (typeof window === 'undefined') return ''
   return window.location.origin
@@ -16,16 +32,12 @@ function toAbsoluteApiUrl(pathname) {
 }
 
 async function workshopJsonRequest(path, options = {}) {
-  const token = getAuthToken()
-  const headers = {
-    Accept: 'application/json',
-    ...(token ? { Authorization: 'Bearer ' + token } : {}),
-    ...options.headers,
-  }
-
   const response = await fetch(API_BASE + path, {
     ...options,
-    headers,
+    headers: buildWorkshopHeaders({
+      Accept: 'application/json',
+      ...options.headers,
+    }),
   })
 
   let data = null
@@ -358,6 +370,34 @@ function extractApiErrorMessage(data, fallbackStatus) {
   return `HTTP ${fallbackStatus}`
 }
 
+function normalizeAgentDoSessionMapping(data, fallback = {}) {
+  return {
+    ...(data || {}),
+    username: String(data?.username ?? fallback.username ?? ''),
+    conversationId: String(
+      data?.conversationId
+      ?? data?.conversation_id
+      ?? fallback.conversationId
+      ?? fallback.conversation_id
+      ?? '',
+    ),
+    agentDoSessionId: String(
+      data?.agentDoSessionId
+      ?? data?.agentdo_session_id
+      ?? fallback.agentDoSessionId
+      ?? fallback.agentdo_session_id
+      ?? '',
+    ),
+    workspacePath: String(
+      data?.workspacePath
+      ?? data?.workspace_path
+      ?? fallback.workspacePath
+      ?? fallback.workspace_path
+      ?? '',
+    ),
+  }
+}
+
 export async function restoreAgentDoSessionMapping(payload) {
   const response = await fetch(`${API_BASE}/agent-do/session-mapping/restore`, {
     method: 'POST',
@@ -384,7 +424,7 @@ export async function restoreAgentDoSessionMapping(payload) {
     throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
   }
 
-  return data
+  return normalizeAgentDoSessionMapping(data, payload)
 }
 
 export async function ensureAgentDoSessionMapping(payload) {
@@ -412,7 +452,7 @@ export async function ensureAgentDoSessionMapping(payload) {
     throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
   }
 
-  return data
+  return normalizeAgentDoSessionMapping(data, payload)
 }
 
 export async function deleteAgentDoSessionMapping({ username, conversationId }) {
@@ -437,7 +477,11 @@ export async function deleteAgentDoSessionMapping({ username, conversationId }) 
     throw new Error(data?.detail || data?.error || `HTTP ${response.status}`)
   }
 
-  return data
+  return normalizeAgentDoSessionMapping(data, {
+    username,
+    conversationId,
+    deleted: Boolean(data?.deleted),
+  })
 }
 
 export async function fetchAgentDoConversationTokenUsage({ username, conversationId }) {
@@ -446,7 +490,10 @@ export async function fetchAgentDoConversationTokenUsage({ username, conversatio
       '/agent-do/tokens/conversation/' + encodeURIComponent(username) + '/' + encodeURIComponent(conversationId)
     )
   } catch (error) {
-    if (String(error?.message || '').includes('Conversation mapping not found')) {
+    if (
+      String(error?.message || '').includes('Conversation mapping not found')
+      || String(error?.message || '').includes('HTTP 404')
+    ) {
       return {
         username,
         conversationId,

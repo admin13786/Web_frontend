@@ -163,15 +163,28 @@
                 </button>
                 <div class="welcome-screen__title">{{ chatTitle }}</div>
               </div>
-              <div class="welcome-screen__subtitle">当前用户 · {{ userDisplayName }}</div>
+              <div class="welcome-screen__subtitle">{{ skillAssistantHeaderText }}</div>
             </div>
 
             <div class="welcome-screen__hero">
               <div class="welcome-screen__art"></div>
               <div class="welcome-screen__copy">
-                <span class="welcome-screen__eyebrow">Agent Workspace</span>
-                <h1 class="welcome-screen__headline">Hi, 朋友</h1>
-                <p class="welcome-screen__desc">今天想一起完成什么？可以直接输入需求，我们马上开始。</p>
+                <span class="welcome-screen__eyebrow">{{ workshopHeroEyebrow }}</span>
+                <h1 class="welcome-screen__headline">{{ workshopHeroHeadline }}</h1>
+                <p class="welcome-screen__desc">{{ workshopHeroDesc }}</p>
+                <div v-if="isSkillAssistantMode" class="skill-assistant-hero-panel">
+                  <div class="skill-assistant-hero-panel__intro">
+                    <span class="skill-assistant-hero-panel__kicker">AGENT + SKILLS</span>
+                    <div class="skill-assistant-hero-panel__title">把任务交给能借助 Skills 的 Agent</div>
+                    <p class="skill-assistant-hero-panel__desc">更适合写报告、写作业、拆资料、做结构化整理。先选技能，再把任务与附件交进来。</p>
+                  </div>
+                  <div class="skill-assistant-hero-panel__chips">
+                    <span v-for="item in skillAssistantScenarios" :key="item" class="skill-assistant-hero-panel__chip">
+                      {{ item }}
+                    </span>
+                  </div>
+                  <div class="skill-assistant-hero-panel__status">{{ skillAssistantStatusText }}</div>
+                </div>
               </div>
             </div>
 
@@ -179,7 +192,7 @@
               <textarea
                 v-model="inputText"
                 class="welcome-screen__textarea"
-                placeholder="给我一个任务，或者直接描述你想要的页面"
+                :placeholder="workshopComposerPlaceholder"
                 rows="1"
                 @keydown.enter.exact.prevent="sendMessage"
                 @input="autoResize"
@@ -246,6 +259,14 @@
                   </svg>
                   <span>{{ attachmentUploading ? '上传中...' : currentAttachmentButtonLabel }}</span>
                 </button>
+                <template v-if="isSkillAssistantMode">
+                  <button type="button" class="skill-console-btn skill-console-btn--compact" @click="requestSkillSelector">
+                    {{ selectedSkillButtonText }}
+                  </button>
+                  <button type="button" class="skill-console-btn skill-console-btn--compact skill-console-btn--secondary" @click="requestSkillManager">
+                    Skill 仓库
+                  </button>
+                </template>
                 <div
                   v-if="!isSkillAssistantMode"
                   class="mode-switch mode-switch--welcome"
@@ -342,7 +363,7 @@
                 </svg>
               </button>
             </div>
-            <div class="chat-subtitle">当前用户：{{ userDisplayName }}</div>
+            <div class="chat-subtitle">{{ skillAssistantHeaderText }}</div>
           </div>
         </div>
         <div class="header-actions">
@@ -515,7 +536,7 @@
       <div class="input-area">
         <textarea
           v-model="inputText"
-          placeholder="输入消息..."
+          :placeholder="chatComposerPlaceholder"
           rows="1"
           @keydown.enter.exact.prevent="sendMessage"
           @input="autoResize"
@@ -534,6 +555,14 @@
           </svg>
           <span>{{ attachmentUploading ? '上传中...' : currentAttachmentButtonLabel }}</span>
         </button>
+        <template v-if="isSkillAssistantMode">
+          <button type="button" class="skill-console-btn skill-console-btn--compact" @click="requestSkillSelector">
+            {{ selectedSkillButtonText }}
+          </button>
+          <button type="button" class="skill-console-btn skill-console-btn--compact skill-console-btn--secondary" @click="requestSkillManager">
+            Skill 仓库
+          </button>
+        </template>
         <div v-if="!isSkillAssistantMode" class="mode-switch" role="tablist" aria-label="生成模式">
           <button
             type="button"
@@ -1069,28 +1098,29 @@ import DeleteConversationConfirmModal from '../components/DeleteConversationConf
 import { useTheme } from '../composables/useTheme'
 import {
   clearCurrentUser,
-  consumeGuestTrial,
   getAuthChangedEventName,
   getCurrentUser,
-  getGuestSessionUser,
   getUserDisplayName,
-  hasGuestTrialRemaining,
   saveCurrentUser,
 } from '../utils/auth.js'
 import {
-  clearTransientWorkshopState,
   createEmptyConversation,
-  getTransientWorkshopState,
-  removeTransientWorkshopConversationState,
   removeWorkshopConversationState,
-  saveTransientWorkshopState,
 } from '../utils/workshopHistory.js'
+import {
+  FUNCTION_MODE,
+  getPathForFunctionMode,
+  getRouteFunctionMode,
+  normalizeFunctionMode,
+} from '../utils/functionMode.js'
 
 const router = useRouter()
 const route = useRoute()
 const WORKSHOP_CREATE_CONVERSATION_EVENT = 'workshop-create-conversation'
 const WORKSHOP_CONVERSATION_DELETED_EVENT = 'workshop-conversation-deleted'
 const WORKSHOP_SKILL_SELECTED_EVENT = 'workshop-skill-selected'
+const WORKSHOP_OPEN_SKILL_SELECTOR_EVENT = 'workshop-open-skill-selector'
+const WORKSHOP_OPEN_SKILL_MANAGER_EVENT = 'workshop-open-skill-manager'
 const AUTH_CHANGED_EVENT = getAuthChangedEventName()
 const WORKSHOP_SKILL_STORAGE_KEY = 'workshop-selected-skills'
 const DOCUMENT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.md', '.txt'])
@@ -1098,6 +1128,8 @@ const IMAGE_ATTACHMENT_ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.
 const ATTACHMENT_MAX_FILES = 5
 const ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024
 const ATTACHMENT_MAX_TOTAL_SIZE = 25 * 1024 * 1024
+const ATTACHMENT_CONTEXT_MAX_PER_FILE_CHARS = 6000
+const ATTACHMENT_CONTEXT_MAX_TOTAL_CHARS = 18000
 const DOCUMENT_ATTACHMENT_ACCEPT = '.pdf,.docx,.md,.txt'
 const IMAGE_ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif'
 const DOCUMENT_ATTACHMENT_DEFAULT_PROMPT = '请先读取我刚上传的文件，概括重点，并告诉我接下来你能如何帮助我。'
@@ -1127,19 +1159,16 @@ function normalizeSkillMetaList(list) {
     .filter(Boolean)
 }
 
-function normalizeFunctionMode(mode) {
-  return String(mode || '').trim() === 'skill_assistant' ? 'skill_assistant' : 'workshop'
-}
-
-const currentFunctionMode = computed(() => normalizeFunctionMode(route.query.fm))
-const isSkillAssistantMode = computed(() => currentFunctionMode.value === 'skill_assistant')
-const isWorkshopMode = computed(() => currentFunctionMode.value === 'workshop')
+const currentFunctionMode = computed(() => getRouteFunctionMode(route))
+const isSkillAssistantMode = computed(() => currentFunctionMode.value === FUNCTION_MODE.SKILL_ASSISTANT)
+const isWorkshopMode = computed(() => currentFunctionMode.value === FUNCTION_MODE.WORKSHOP)
 const selectedSkillIds = computed(() => selectedSkillMetas.value.map((item) => item.id).filter(Boolean))
 const attachmentInputEl = ref(null)
 const pendingAttachments = ref([])
 const uploadedAttachments = ref([])
 const attachmentUploading = ref(false)
 const attachmentUploadError = ref('')
+const attachmentTextCache = new Map()
 let attachmentSelectionSeq = 0
 const loginPromptOpen = ref(false)
 const loginPromptMode = ref('login')
@@ -1168,11 +1197,67 @@ const currentAttachmentDefaultPrompt = computed(() => (
   isSkillAssistantMode.value ? DOCUMENT_ATTACHMENT_DEFAULT_PROMPT : IMAGE_ATTACHMENT_DEFAULT_PROMPT
 ))
 const currentGuestMode = computed(() => (isSkillAssistantMode.value ? 'skill_assistant' : 'workshop'))
+const selectedSkillButtonText = computed(() => (
+  selectedSkillMetas.value.length ? `已选 ${selectedSkillMetas.value.length} 个 Skills` : '选择 Skill'
+))
+const selectedSkillSummaryText = computed(() => {
+  if (!selectedSkillMetas.value.length) return ''
+  return selectedSkillMetas.value
+    .map((item) => String(item?.name || '').trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(' · ')
+})
+const workshopHeroEyebrow = computed(() => (
+  isSkillAssistantMode.value ? 'Agent Skill Desk' : 'Workshop Proof Desk'
+))
+const workshopHeroHeadline = computed(() => (
+  isSkillAssistantMode.value ? '先把哪项任务交给 Agent？' : '今天先打磨哪一页？'
+))
+const workshopHeroDesc = computed(() => (
+  isSkillAssistantMode.value
+    ? 'Skill 助手是交付型任务区。你可以先选 Skill，再让 Agent 去写报告、拆作业、整理资料，或结合附件完成结构化输出。'
+    : '把需求、页面想法或需要修订的细节写下来，我们会在这里铺开草稿、预览与校样。'
+))
+const workshopComposerPlaceholder = computed(() => (
+  isSkillAssistantMode.value
+    ? '例如：帮我写一份行业调研报告，结合我选中的 Skills 和上传资料'
+    : '描述任务、页面方向，或直接贴出你要继续打磨的内容'
+))
+const chatComposerPlaceholder = computed(() => (
+  isSkillAssistantMode.value
+    ? '把任务交给 Agent，例如：整理这份附件并写成一份可提交作业'
+    : '输入消息...'
+))
+const skillAssistantHeaderText = computed(() => (
+  isSkillAssistantMode.value
+    ? `当前用户：${userDisplayName.value} · Agent + Skills 任务区`
+    : `当前用户：${userDisplayName.value}`
+))
+const skillAssistantStatusText = computed(() => (
+  selectedSkillMetas.value.length
+    ? `当前已挂载：${selectedSkillSummaryText.value}`
+    : '当前未指定固定 Skill，Agent 会根据任务自动调度能力'
+))
+const skillAssistantScenarios = [
+  '报告写作',
+  '作业拆解',
+  '资料整理',
+  '规范润色',
+]
 
 function getActiveUsername() {
-  return isAuthenticated.value
-    ? String(currentUser.value?.username || '').trim()
-    : getGuestSessionUser()
+  return String(currentUser.value?.username || '').trim()
+}
+
+function requestSkillSelector() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(WORKSHOP_OPEN_SKILL_SELECTOR_EVENT))
+}
+
+function requestSkillManager() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(WORKSHOP_OPEN_SKILL_MANAGER_EVENT))
 }
 
 function syncCurrentUserFromStorage() {
@@ -1180,13 +1265,14 @@ function syncCurrentUserFromStorage() {
 }
 
 function openLoginPrompt(mode = 'login') {
-  loginPromptMode.value = mode === 'register' ? 'register' : 'login'
-  loginPromptError.value = ''
-  loginPromptLoading.value = false
-  loginPromptDisplayName.value = ''
-  loginPromptUsername.value = ''
-  loginPromptPassword.value = ''
-  loginPromptOpen.value = true
+  const resolvedMode = mode === 'register' ? 'register' : 'login'
+  router.push({
+    path: '/login',
+    query: {
+      mode: resolvedMode,
+      redirect: route.fullPath,
+    },
+  })
 }
 
 function closeLoginPrompt() {
@@ -1243,6 +1329,7 @@ async function handleLoginPromptSubmit() {
         response.user?.displayName
         || loginPromptDisplayName.value.trim()
         || loginPromptUsername.value.trim(),
+      role: response.user?.role,
       token: response.token,
     })
     syncCurrentUserFromStorage()
@@ -1256,7 +1343,7 @@ async function handleLoginPromptSubmit() {
 }
 
 function shouldBlockGuestSend() {
-  return !isAuthenticated.value && !hasGuestTrialRemaining(currentGuestMode.value)
+  return !isAuthenticated.value
 }
 
 function clearLegacyStoredSkillSelection() {
@@ -1314,10 +1401,7 @@ async function persistConversationRecordById(conversationId) {
   const shouldPersist = hasMeaningfulConversationContent(snapshot) || snapshot.orderIndex != null
   if (!shouldPersist) return snapshot
   if (!isAuthenticated.value) {
-    saveTransientWorkshopState(getGuestSessionUser(), {
-      conversations: conversationList.value,
-      currentConversationId: currentConversationId.value,
-    })
+    openLoginPrompt('login')
     return snapshot
   }
   try {
@@ -1410,6 +1494,139 @@ function attachmentStatusClass(item) {
   if (status === 'failed') return 'skill-attachment-chip--failed'
   if (status === 'empty') return 'skill-attachment-chip--empty'
   return 'skill-attachment-chip--success'
+}
+
+function truncateAttachmentContextText(text, limit) {
+  const normalized = String(text || '').trim()
+  if (!normalized || normalized.length <= limit) {
+    return {
+      text: normalized,
+      truncated: false,
+    }
+  }
+  return {
+    text: `${normalized.slice(0, Math.max(0, limit)).trimEnd()}\n……`,
+    truncated: true,
+  }
+}
+
+function getAttachmentReadablePath(item) {
+  const extractedPath = String(item?.extractedPath || '').trim()
+  if (extractedPath) return extractedPath
+  const originalPath = String(item?.originalPath || '').trim()
+  const extension = String(item?.extension || '').trim().toLowerCase()
+  if (originalPath && (extension === '.txt' || extension === '.md')) {
+    return originalPath
+  }
+  return ''
+}
+
+async function loadAttachmentTextForContext(attachment, workspaceRequest) {
+  const readablePath = getAttachmentReadablePath(attachment)
+  if (!readablePath || !workspaceRequest?.ready) {
+    return {
+      text: '',
+      truncated: false,
+      note: attachment?.error ? `附件提取失败：${attachment.error}` : '当前附件暂无可读取文本',
+    }
+  }
+
+  const cacheKey = `${workspaceRequest.username}:${workspaceRequest.conversationId}:${readablePath}`
+  if (attachmentTextCache.has(cacheKey)) {
+    return attachmentTextCache.get(cacheKey)
+  }
+
+  try {
+    const data = await fetchAgentDoWorkspaceFile({
+      username: workspaceRequest.username,
+      conversationId: workspaceRequest.conversationId,
+      path: readablePath,
+    })
+    const result = {
+      text: typeof data?.content === 'string' ? data.content.trim() : '',
+      truncated: Boolean(data?.truncated),
+      note: '',
+    }
+    if (!result.text) {
+      result.note = attachment?.error ? `附件提取失败：${attachment.error}` : '附件文本为空'
+    }
+    attachmentTextCache.set(cacheKey, result)
+    return result
+  } catch (error) {
+    const result = {
+      text: '',
+      truncated: false,
+      note: error instanceof Error ? `附件读取失败：${error.message}` : `附件读取失败：${String(error)}`,
+    }
+    attachmentTextCache.set(cacheKey, result)
+    return result
+  }
+}
+
+async function buildSkillAssistantAttachmentContext(conversationId) {
+  const workspaceRequest = buildWorkspaceRequest(conversationId)
+  if (!workspaceRequest.ready) return ''
+
+  const storedAttachments = getConversationById(conversationId)?.preview?.attachments || []
+  const mergedAttachments = mergeUploadedAttachmentRecords(
+    storedAttachments,
+    isCurrentConversation(conversationId) ? uploadedAttachments.value : [],
+  ).filter((item) => String(item?.attachmentType || '').trim().toLowerCase() !== 'image')
+
+  if (!mergedAttachments.length) return ''
+
+  const sections = []
+  let usedChars = 0
+
+  for (let index = 0; index < mergedAttachments.length; index += 1) {
+    const attachment = mergedAttachments[index]
+    const sectionLines = [`附件 ${index + 1}：${attachment.originalName}`]
+    sectionLines.push(`提取状态：${attachmentStatusText(attachment)}`)
+
+    const contentResult = await loadAttachmentTextForContext(attachment, workspaceRequest)
+    const remainingChars = ATTACHMENT_CONTEXT_MAX_TOTAL_CHARS - usedChars
+    if (contentResult.text && remainingChars > 0) {
+      const clipped = truncateAttachmentContextText(
+        contentResult.text,
+        Math.min(ATTACHMENT_CONTEXT_MAX_PER_FILE_CHARS, remainingChars),
+      )
+      if (clipped.text) {
+        sectionLines.push(`提取文本：\n${clipped.text}`)
+        usedChars += clipped.text.length
+      }
+      if (clipped.truncated || contentResult.truncated) {
+        sectionLines.push('说明：附件内容较长，这里只附上前半段关键文本。')
+      }
+    } else if (contentResult.note) {
+      sectionLines.push(`说明：${contentResult.note}`)
+    }
+
+    if (attachment.error && !sectionLines.some((line) => line.includes(attachment.error))) {
+      sectionLines.push(`异常：${attachment.error}`)
+    }
+    sections.push(sectionLines.join('\n'))
+
+    if (usedChars >= ATTACHMENT_CONTEXT_MAX_TOTAL_CHARS) {
+      sections.push('其余附件文本已省略，请优先根据以上已提取内容回答。')
+      break
+    }
+  }
+
+  if (!sections.length) return ''
+  return [
+    '系统提示：当前对话已经上传附件。回答时必须优先参考这些附件，不要再说“没有看到附件”或“当前对话没有上传文件”。',
+    ...sections,
+  ].join('\n\n')
+}
+
+async function buildSkillAssistantRequestContext(userText, conversationId) {
+  const attachmentContext = await buildSkillAssistantAttachmentContext(conversationId)
+  if (!attachmentContext) return userText
+  return [
+    attachmentContext,
+    '回答规则：如果用户是在询问附件是什么、讲了什么、有什么重点，请只用自然语言直接回答，不要输出 HTML、CSS、JS、Markdown 代码块或页面模板。',
+    `用户问题：\n${userText}`,
+  ].join('\n\n')
 }
 
 function resetAttachmentInput() {
@@ -2972,7 +3189,7 @@ function syncConversationRoute(id) {
   if (!nextId || currentId === nextId) return
   const { new: _newConversationFlag, ...restQuery } = route.query || {}
   router.replace({
-    path: '/workshop',
+    path: getPathForFunctionMode(currentFunctionMode.value),
     query: {
       ...restQuery,
       cid: nextId,
@@ -2982,6 +3199,13 @@ function syncConversationRoute(id) {
 
 function routeRequestsNewConversation() {
   return String(route.query.new || '').trim() === '1'
+}
+
+function filterConversationsByMode(list, mode = currentFunctionMode.value) {
+  const normalizedMode = normalizeFunctionMode(mode)
+  return (Array.isArray(list) ? list : []).filter((item) => (
+    normalizeFunctionMode(item?.conversationMode) === normalizedMode
+  ))
 }
 
 function emitWorkshopHistoryChanged() {
@@ -3180,10 +3404,7 @@ async function persistConversations() {
     }
     conversationList.value = nextList
     if (!isAuthenticated.value) {
-      saveTransientWorkshopState(getGuestSessionUser(), {
-        conversations: conversationList.value,
-        currentConversationId: currentConversationId.value,
-      })
+      openLoginPrompt('login')
       return snapshot
     }
     const saved = await saveWorkshopConversation(snapshot)
@@ -3256,9 +3477,9 @@ async function createNewConversation(options = {}) {
 
 async function handleExternalCreateConversation(event) {
   if (!historyReady.value || busy.value) return
-  const requestedMode = normalizeFunctionMode(event?.detail?.mode || route.query.fm)
+  const requestedMode = normalizeFunctionMode(event?.detail?.mode || getRouteFunctionMode(route))
   if (requestedMode !== currentFunctionMode.value) {
-    await router.push({ path: '/workshop', query: { ...route.query, fm: requestedMode, new: '1' } })
+    await router.push({ path: getPathForFunctionMode(requestedMode), query: { new: '1' } })
     return
   }
   await createNewConversation({ startRename: false })
@@ -3320,7 +3541,8 @@ async function confirmDeleteConversation() {
         nextActiveConversation?.id || '',
       )
     } else {
-      removeTransientWorkshopConversationState(getGuestSessionUser(), id, nextActiveConversation?.id || '')
+      openLoginPrompt('login')
+      return
     }
     await removeDeletedConversationLocally(id, nextActiveConversation?.id || '')
     emitWorkshopHistoryChanged()
@@ -3333,18 +3555,42 @@ async function confirmDeleteConversation() {
 
 async function loadWorkshopHistory() {
   if (!isAuthenticated.value) {
-    const guestState = getTransientWorkshopState(getGuestSessionUser())
-    conversationList.value = Array.isArray(guestState.conversations)
-      ? guestState.conversations.map((item) => normalizeConversationRecord(item))
-      : []
-  } else {
-    const conversations = await fetchWorkshopConversations()
-    conversationList.value = Array.isArray(conversations)
-      ? conversations.map((item) => normalizeConversationRecord(item))
-      : []
+    conversationList.value = []
+    historyReady.value = false
+    await router.replace({
+      path: '/login',
+      query: {
+        redirect: route.fullPath,
+      },
+    })
+    return
   }
+  const conversations = await fetchWorkshopConversations()
+  const normalizedConversations = Array.isArray(conversations)
+    ? conversations.map((item) => normalizeConversationRecord(item))
+    : []
+  conversationList.value = filterConversationsByMode(normalizedConversations)
   const routeConversationId = String(route.query.cid || '').trim()
-  let current = conversationList.value.find((item) => item.id === routeConversationId) || conversationList.value[0]
+  const wantsNewConversation = routeRequestsNewConversation()
+  let current = routeConversationId
+    ? conversationList.value.find((item) => item.id === routeConversationId)
+    : null
+  if (routeConversationId && !current) {
+    const { cid: _staleConversationId, ...restQuery } = route.query || {}
+    await router.replace({
+      path: getPathForFunctionMode(currentFunctionMode.value),
+      query: restQuery,
+    })
+  }
+  if (!current && !wantsNewConversation) {
+    current = conversationList.value[0]
+  }
+  if (!current && wantsNewConversation) {
+    historyReady.value = true
+    await createNewConversation({ startRename: false })
+    emitWorkshopHistoryChanged()
+    return
+  }
   if (!current) {
     current = createEmptyConversation(undefined, currentFunctionMode.value)
     conversationList.value = [current]
@@ -3368,7 +3614,7 @@ function normalizeConversationComparable(conversation) {
   return JSON.stringify({
     id: String(conversation?.id || ''),
     title: String(conversation?.title || ''),
-    conversationMode: normalizeFunctionMode(conversation?.conversationMode || 'workshop'),
+    conversationMode: normalizeFunctionMode(conversation?.conversationMode || FUNCTION_MODE.WORKSHOP),
     orderIndex: conversation?.orderIndex ?? null,
     createdAt: String(conversation?.createdAt || ''),
     messages: Array.isArray(conversation?.messages) ? conversation.messages : [],
@@ -3404,7 +3650,7 @@ async function logout() {
   await logoutApi().catch(() => null)
   clearCurrentUser()
   syncCurrentUserFromStorage()
-  await router.push('/workshop')
+  await router.push('/login')
 }
 
 function toggleSidebar() {
@@ -3467,11 +3713,7 @@ async function commitRename(id) {
         }
       : nextList[index]
     if (!isAuthenticated.value) {
-      saveTransientWorkshopState(getGuestSessionUser(), {
-        conversations: conversationList.value,
-        currentConversationId: currentConversationId.value,
-      })
-      emitWorkshopHistoryChanged()
+      openLoginPrompt('login')
       return
     }
     const saved = await saveWorkshopConversation(payload)
@@ -4359,10 +4601,12 @@ async function sendLegacyMessage(options = {}) {
     if (!workspaceReady) {
       throw new Error(workspaceBootstrapError.value || '工作区初始化失败，请重试')
     }
+    const requestContext = await buildSkillAssistantRequestContext(text, targetConversationId)
     for await (const part of streamGenerateText(
-      text,
+      requestContext,
       '你是专业的 Skill 助手。请直接输出清晰、可执行的文本答案；'
-      + '除非用户明确要求，不要生成 HTML 页面代码。',
+      + '除非用户明确要求，严禁输出 HTML、CSS、JS、Markdown 代码块或页面模板。'
+      + '如果上下文里包含已上传附件或提取文本，必须先基于附件回答，不要否认附件存在。',
       {
         conversationId: targetConversationId,
         username: targetWorkspaceRequest.username,
@@ -4460,9 +4704,6 @@ async function sendMessage() {
   if (!currentConversationId.value) {
     const createdConversation = await createNewConversation({ startRename: false })
     if (!createdConversation?.id) return
-  }
-  if (!isAuthenticated.value && hasGuestTrialRemaining(currentGuestMode.value)) {
-    consumeGuestTrial(currentGuestMode.value)
   }
 
   if (currentFunctionMode.value === 'skill_assistant') {
@@ -4749,6 +4990,11 @@ function shouldForkFailedSingleHtmlConversation() {
 
 async function handleAuthChanged() {
   syncCurrentUserFromStorage()
+  if (!currentUser.value?.username) {
+    closeLoginPrompt()
+    await router.replace('/login')
+    return
+  }
   await loadWorkshopHistory()
 }
 
@@ -4865,6 +5111,14 @@ watch(
 )
 
 watch(
+  () => currentFunctionMode.value,
+  async (mode, previousMode) => {
+    if (!historyReady.value || mode === previousMode) return
+    await loadWorkshopHistory()
+  },
+)
+
+watch(
   () => showResultPanel.value,
   (visible) => {
     if (visible) return
@@ -4877,65 +5131,105 @@ watch(
 
 <style scoped>
 .workshop {
+  --accent: #9b5f33;
+  --accent-glow: rgba(155, 95, 51, 0.18);
+  --text-primary: #2d2118;
+  --text-secondary: rgba(99, 73, 52, 0.78);
+  --text-muted: rgba(134, 101, 74, 0.72);
+  --workshop-bg:
+    radial-gradient(circle at 82% 11%, rgba(181, 117, 63, 0.14), transparent 19%),
+    radial-gradient(circle at 14% 19%, rgba(137, 96, 61, 0.1), transparent 24%),
+    linear-gradient(180deg, #fcf8f0 0%, #f3e8d7 56%, #ead7c1 100%);
+  --workshop-border: rgba(153, 114, 78, 0.2);
+  --workshop-panel-bg:
+    linear-gradient(180deg, rgba(255, 251, 246, 0.94), rgba(247, 239, 228, 0.88));
+  --workshop-panel-soft-bg:
+    linear-gradient(180deg, rgba(255, 252, 248, 0.42), rgba(236, 223, 204, 0.48));
+  --workshop-panel-strong-bg:
+    linear-gradient(180deg, rgba(96, 66, 42, 0.98), rgba(72, 48, 31, 0.98));
+  --workshop-hover-bg: rgba(164, 118, 79, 0.1);
+  --workshop-hover-strong-bg: rgba(160, 112, 69, 0.16);
+  --workshop-input-bg: rgba(255, 251, 245, 0.94);
+  --workshop-input-border: rgba(162, 119, 81, 0.26);
+  --workshop-inset-bg:
+    linear-gradient(180deg, rgba(242, 231, 215, 0.84), rgba(233, 217, 198, 0.9));
+  --topbar-border: rgba(162, 119, 81, 0.22);
+  --proof-chip-bg: rgba(255, 250, 244, 0.8);
+  --proof-chip-border: rgba(162, 119, 81, 0.18);
+  --proof-chip-hover-bg: rgba(176, 127, 84, 0.12);
+  --proof-chip-active-bg: rgba(155, 95, 51, 0.13);
+  --proof-chip-active-border: rgba(155, 95, 51, 0.26);
+  --proof-shadow: 0 22px 54px rgba(98, 68, 44, 0.12);
+  --rail-bg: linear-gradient(180deg, rgba(255, 251, 245, 0.72), rgba(250, 242, 231, 0.64));
+  --input-tray-bg: linear-gradient(180deg, rgba(250, 244, 234, 0.88), rgba(245, 235, 222, 0.92));
+  --textarea-surface: rgba(255, 251, 246, 0.78);
+  --textarea-surface-border: rgba(160, 118, 81, 0.14);
+  --file-header-bg: rgba(255, 251, 245, 0.6);
+  --welcome-copy-rule: rgba(160, 118, 81, 0.18);
+  --stream-bar-bg:
+    linear-gradient(90deg, rgba(155, 95, 51, 0.08), rgba(255, 249, 240, 0.92) 56%, rgba(247, 238, 225, 0.94));
+  --scroll-btn-bg: rgba(255, 249, 240, 0.94);
+  --scroll-btn-hover-bg: rgba(155, 95, 51, 0.88);
+  --scroll-btn-text: #5d3b22;
+  --preview-status-waiting: #b67b35;
+  --preview-status-ready: #5c7a51;
+  --preview-status-error: #ad5a43;
   --welcome-shell-bg:
-    radial-gradient(circle at 82% 12%, rgba(255, 212, 140, 0.18), transparent 18%),
-    radial-gradient(circle at 14% 18%, rgba(59, 130, 246, 0.12), transparent 22%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 245, 249, 0.72));
+    radial-gradient(circle at 84% 12%, rgba(192, 130, 77, 0.18), transparent 20%),
+    linear-gradient(180deg, rgba(255, 251, 245, 0.94), rgba(245, 235, 221, 0.9));
   --welcome-panel-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(233, 241, 251, 0.72)),
-    radial-gradient(circle at 50% 12%, rgba(255, 244, 214, 0.9), transparent 11%),
-    radial-gradient(circle at 18% 36%, rgba(159, 196, 255, 0.18), transparent 24%),
-    radial-gradient(circle at 86% 28%, rgba(255, 213, 161, 0.18), transparent 18%),
-    linear-gradient(180deg, #edf4fb 0%, #d5e1ef 38%, #c5d2e1 100%);
-  --welcome-panel-shadow: 0 28px 70px rgba(148, 163, 184, 0.28);
-  --welcome-meta-color: rgba(71, 85, 105, 0.92);
-  --welcome-title-color: #0f172a;
-  --welcome-subtitle-color: rgba(71, 85, 105, 0.72);
+    repeating-linear-gradient(180deg, rgba(132, 102, 76, 0.05) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(243, 232, 216, 0.92));
+  --welcome-panel-shadow: 0 28px 70px rgba(111, 79, 52, 0.16);
+  --welcome-meta-color: rgba(96, 73, 52, 0.88);
+  --welcome-title-color: #342419;
+  --welcome-subtitle-color: rgba(116, 88, 64, 0.76);
   --welcome-hero-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(226, 232, 240, 0.32)),
-    linear-gradient(180deg, rgba(196, 210, 226, 0.4), rgba(242, 247, 251, 0.72));
-  --welcome-hero-border: rgba(148, 163, 184, 0.22);
+    linear-gradient(180deg, rgba(255, 252, 248, 0.72), rgba(245, 234, 219, 0.82)),
+    linear-gradient(135deg, rgba(196, 156, 116, 0.16), rgba(255, 255, 255, 0));
+  --welcome-hero-border: rgba(159, 118, 81, 0.24);
   --welcome-hero-overlay:
-    radial-gradient(circle at 50% 16%, rgba(255, 249, 235, 0.7), transparent 12%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(148, 163, 184, 0.08));
+    linear-gradient(90deg, rgba(255, 251, 245, 0.16), rgba(255, 251, 245, 0) 46%),
+    radial-gradient(circle at 78% 28%, rgba(189, 128, 73, 0.12), transparent 18%);
   --welcome-art-bg:
-    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.88), transparent 9%),
-    radial-gradient(circle at 16% 40%, rgba(147, 197, 253, 0.2), transparent 22%),
-    radial-gradient(circle at 84% 28%, rgba(251, 191, 36, 0.16), transparent 16%);
-  --welcome-eyebrow-border: rgba(148, 163, 184, 0.28);
-  --welcome-eyebrow-bg: rgba(255, 255, 255, 0.52);
-  --welcome-eyebrow-color: rgba(51, 65, 85, 0.88);
-  --welcome-headline-color: #0f172a;
-  --welcome-desc-color: rgba(51, 65, 85, 0.88);
-  --welcome-composer-bg: rgba(255, 255, 255, 0.64);
-  --welcome-composer-border: rgba(148, 163, 184, 0.22);
-  --welcome-composer-shadow: 0 20px 48px rgba(148, 163, 184, 0.24);
-  --welcome-textarea-color: #0f172a;
-  --welcome-placeholder-color: rgba(100, 116, 139, 0.72);
-  --welcome-send-bg: rgba(99, 102, 241, 0.14);
-  --welcome-send-bg-hover: rgba(99, 102, 241, 0.24);
-  --welcome-send-color: #3730a3;
-  --preview-surface-color: rgba(30, 41, 59, 0.82);
+    radial-gradient(circle at 78% 24%, rgba(184, 123, 69, 0.18), transparent 16%),
+    radial-gradient(circle at 28% 72%, rgba(134, 96, 62, 0.12), transparent 24%);
+  --welcome-eyebrow-border: rgba(160, 118, 81, 0.24);
+  --welcome-eyebrow-bg: rgba(252, 246, 238, 0.78);
+  --welcome-eyebrow-color: rgba(118, 82, 52, 0.88);
+  --welcome-headline-color: #2e2118;
+  --welcome-desc-color: rgba(82, 61, 44, 0.84);
+  --welcome-composer-bg:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.92), rgba(246, 237, 224, 0.9));
+  --welcome-composer-border: rgba(160, 118, 81, 0.22);
+  --welcome-composer-shadow: 0 18px 44px rgba(111, 79, 52, 0.14);
+  --welcome-textarea-color: #2d2118;
+  --welcome-placeholder-color: rgba(121, 91, 65, 0.68);
+  --welcome-send-bg: #9b5f33;
+  --welcome-send-bg-hover: #874c22;
+  --welcome-send-color: #fff8ef;
+  --preview-surface-color: rgba(67, 49, 36, 0.84);
   --preview-surface-bg:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.82), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(241, 245, 249, 0.92));
-  --preview-surface-border: rgba(148, 163, 184, 0.18);
-  --preview-surface-grid: rgba(148, 163, 184, 0.16);
-  --preview-surface-orb-color: rgba(51, 65, 85, 0.88);
-  --preview-surface-orb-bg: rgba(255, 255, 255, 0.54);
-  --preview-surface-ring: rgba(99, 102, 241, 0.26);
-  --preview-surface-title: #0f172a;
-  --preview-surface-text: rgba(71, 85, 105, 0.82);
-  --preview-surface-tip-text: rgba(71, 85, 105, 0.84);
-  --preview-surface-tip-bg: rgba(255, 255, 255, 0.64);
-  --preview-surface-tip-border: rgba(148, 163, 184, 0.2);
-  --preview-strip-bg: rgba(255, 255, 255, 0.54);
-  --preview-strip-border: rgba(148, 163, 184, 0.18);
-  --preview-strip-title: #0f172a;
-  --preview-strip-text: rgba(71, 85, 105, 0.82);
-  --preview-strip-chip-bg: rgba(255, 255, 255, 0.66);
-  --preview-strip-chip-border: rgba(148, 163, 184, 0.2);
-  --preview-strip-chip-text: rgba(51, 65, 85, 0.86);
+    repeating-linear-gradient(180deg, rgba(144, 108, 80, 0.05) 0 1px, transparent 1px 24px),
+    linear-gradient(180deg, rgba(255, 251, 245, 0.94), rgba(244, 234, 220, 0.92));
+  --preview-surface-border: rgba(159, 118, 81, 0.2);
+  --preview-surface-grid: rgba(159, 118, 81, 0.14);
+  --preview-surface-orb-color: rgba(86, 62, 44, 0.9);
+  --preview-surface-orb-bg: rgba(255, 250, 243, 0.7);
+  --preview-surface-ring: rgba(155, 95, 51, 0.22);
+  --preview-surface-title: #342419;
+  --preview-surface-text: rgba(102, 77, 56, 0.82);
+  --preview-surface-tip-text: rgba(93, 69, 48, 0.84);
+  --preview-surface-tip-bg: rgba(255, 249, 240, 0.82);
+  --preview-surface-tip-border: rgba(159, 118, 81, 0.18);
+  --preview-strip-bg:
+    linear-gradient(180deg, rgba(253, 247, 239, 0.92), rgba(247, 238, 225, 0.9));
+  --preview-strip-border: rgba(159, 118, 81, 0.2);
+  --preview-strip-title: #342419;
+  --preview-strip-text: rgba(106, 80, 59, 0.78);
+  --preview-strip-chip-bg: rgba(255, 248, 238, 0.84);
+  --preview-strip-chip-border: rgba(159, 118, 81, 0.18);
+  --preview-strip-chip-text: rgba(95, 71, 49, 0.86);
   display: flex;
   height: calc(100vh - 48px);
   overflow: hidden;
@@ -4945,71 +5239,109 @@ watch(
   min-height: 720px;
   border-radius: 28px;
   border: 1px solid var(--workshop-border);
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 28px 72px rgba(98, 68, 44, 0.12);
 }
 
 .workshop--dark {
+  --accent: #cd8e4e;
+  --accent-glow: rgba(205, 142, 78, 0.22);
+  --text-primary: #f6e9d8;
+  --text-secondary: rgba(225, 202, 173, 0.8);
+  --text-muted: rgba(191, 161, 131, 0.66);
+  --workshop-bg:
+    radial-gradient(circle at 80% 10%, rgba(205, 142, 78, 0.18), transparent 18%),
+    radial-gradient(circle at 18% 18%, rgba(103, 73, 49, 0.18), transparent 22%),
+    linear-gradient(180deg, #261b16 0%, #18120f 56%, #100c0a 100%);
+  --workshop-border: rgba(230, 201, 171, 0.13);
+  --workshop-panel-bg:
+    linear-gradient(180deg, #5b4338, #382923);
+  --workshop-panel-soft-bg:
+    linear-gradient(180deg, rgba(81, 56, 39, 0.26), rgba(28, 19, 14, 0.44));
+  --workshop-panel-strong-bg:
+    linear-gradient(180deg, #49352d, #2c211c);
+  --workshop-hover-bg: rgba(205, 142, 78, 0.1);
+  --workshop-hover-strong-bg: rgba(205, 142, 78, 0.18);
+  --workshop-input-bg: rgba(26, 19, 17, 0.94);
+  --workshop-input-border: rgba(205, 142, 78, 0.24);
+  --workshop-inset-bg:
+    linear-gradient(180deg, rgba(20, 15, 13, 0.94), rgba(14, 11, 10, 0.98));
+  --topbar-border: rgba(230, 201, 171, 0.14);
+  --proof-chip-bg: rgba(60, 43, 34, 0.68);
+  --proof-chip-border: rgba(230, 201, 171, 0.14);
+  --proof-chip-hover-bg: rgba(205, 142, 78, 0.12);
+  --proof-chip-active-bg: rgba(205, 142, 78, 0.16);
+  --proof-chip-active-border: rgba(230, 201, 171, 0.22);
+  --proof-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  --rail-bg: linear-gradient(180deg, #4d3830, #2f231e);
+  --input-tray-bg: linear-gradient(180deg, #544038, #30241f);
+  --textarea-surface: rgba(255, 244, 228, 0.04);
+  --textarea-surface-border: rgba(230, 201, 171, 0.12);
+  --file-header-bg: rgba(255, 244, 228, 0.04);
+  --welcome-copy-rule: rgba(230, 201, 171, 0.14);
+  --stream-bar-bg:
+    linear-gradient(90deg, rgba(205, 142, 78, 0.1), rgba(41, 29, 23, 0.96) 56%, rgba(24, 18, 15, 0.98));
+  --scroll-btn-bg: rgba(40, 29, 24, 0.94);
+  --scroll-btn-hover-bg: rgba(205, 142, 78, 0.94);
+  --scroll-btn-text: #f5e6d4;
+  --preview-status-waiting: #d9a35c;
+  --preview-status-ready: #8ab07a;
+  --preview-status-error: #d97f69;
   --welcome-shell-bg:
-    radial-gradient(circle at 78% 12%, rgba(255, 236, 184, 0.12), transparent 18%),
-    radial-gradient(circle at 16% 18%, rgba(129, 140, 248, 0.14), transparent 22%),
-    linear-gradient(180deg, rgba(100, 116, 139, 0.08), rgba(15, 23, 42, 0.02));
+    radial-gradient(circle at 80% 11%, rgba(205, 142, 78, 0.16), transparent 20%),
+    linear-gradient(180deg, rgba(44, 31, 25, 0.32), rgba(15, 11, 9, 0.08));
   --welcome-panel-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(9, 12, 18, 0.12)),
-    radial-gradient(circle at 48% 12%, rgba(255, 245, 214, 0.28), transparent 12%),
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.12), transparent 8%),
-    radial-gradient(circle at 80% 34%, rgba(34, 43, 58, 0.4), transparent 20%),
-    radial-gradient(circle at 18% 34%, rgba(160, 174, 192, 0.14), transparent 24%),
-    linear-gradient(180deg, #6a7d91 0%, #33475d 34%, #1b2430 68%, #0a0f18 100%);
-  --welcome-panel-shadow: 0 28px 70px rgba(15, 23, 42, 0.24);
-  --welcome-meta-color: rgba(226, 232, 240, 0.9);
-  --welcome-title-color: #f8fafc;
-  --welcome-subtitle-color: rgba(226, 232, 240, 0.42);
+    repeating-linear-gradient(180deg, rgba(215, 178, 138, 0.045) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, #5a4137, #352722);
+  --welcome-panel-shadow: 0 32px 80px rgba(0, 0, 0, 0.32);
+  --welcome-meta-color: rgba(230, 212, 190, 0.88);
+  --welcome-title-color: #faeddb;
+  --welcome-subtitle-color: rgba(225, 197, 166, 0.7);
   --welcome-hero-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18)),
-    linear-gradient(180deg, rgba(85, 102, 120, 0.35), rgba(8, 11, 18, 0.82));
-  --welcome-hero-border: rgba(255, 255, 255, 0.08);
+    linear-gradient(180deg, rgba(119, 86, 62, 0.3), rgba(40, 29, 23, 0.82)),
+    linear-gradient(135deg, rgba(205, 142, 78, 0.14), rgba(255, 255, 255, 0));
+  --welcome-hero-border: rgba(230, 201, 171, 0.14);
   --welcome-hero-overlay:
-    radial-gradient(circle at 50% 16%, rgba(255, 240, 204, 0.18), transparent 12%),
-    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.08), transparent 7%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(2, 6, 12, 0.22));
+    linear-gradient(90deg, rgba(255, 244, 228, 0.03), rgba(255, 244, 228, 0) 46%),
+    radial-gradient(circle at 80% 28%, rgba(205, 142, 78, 0.1), transparent 18%);
   --welcome-art-bg:
-    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.24), transparent 9%),
-    radial-gradient(circle at 82% 30%, rgba(16, 24, 40, 0.3), transparent 18%),
-    radial-gradient(circle at 15% 40%, rgba(16, 24, 40, 0.34), transparent 22%);
-  --welcome-eyebrow-border: rgba(255, 255, 255, 0.14);
-  --welcome-eyebrow-bg: rgba(255, 255, 255, 0.08);
-  --welcome-eyebrow-color: rgba(248, 250, 252, 0.82);
-  --welcome-headline-color: #ffffff;
-  --welcome-desc-color: rgba(226, 232, 240, 0.82);
-  --welcome-composer-bg: rgba(40, 43, 52, 0.84);
-  --welcome-composer-border: rgba(255, 255, 255, 0.08);
-  --welcome-composer-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
-  --welcome-textarea-color: #f8fafc;
-  --welcome-placeholder-color: rgba(226, 232, 240, 0.5);
-  --welcome-send-bg: rgba(255, 255, 255, 0.16);
-  --welcome-send-bg-hover: rgba(255, 255, 255, 0.26);
-  --welcome-send-color: #ffffff;
-  --preview-surface-color: rgba(255, 255, 255, 0.75);
+    radial-gradient(circle at 78% 22%, rgba(205, 142, 78, 0.12), transparent 16%),
+    radial-gradient(circle at 26% 72%, rgba(114, 80, 53, 0.16), transparent 24%);
+  --welcome-eyebrow-border: rgba(230, 201, 171, 0.16);
+  --welcome-eyebrow-bg: rgba(255, 248, 238, 0.06);
+  --welcome-eyebrow-color: rgba(239, 220, 196, 0.82);
+  --welcome-headline-color: #fff4e7;
+  --welcome-desc-color: rgba(228, 208, 184, 0.82);
+  --welcome-composer-bg:
+    linear-gradient(180deg, #5c4338, #382a24);
+  --welcome-composer-border: rgba(230, 201, 171, 0.14);
+  --welcome-composer-shadow: 0 24px 56px rgba(0, 0, 0, 0.3);
+  --welcome-textarea-color: #f3e7d7;
+  --welcome-placeholder-color: rgba(219, 191, 160, 0.5);
+  --welcome-send-bg: #cd8e4e;
+  --welcome-send-bg-hover: #dfb07d;
+  --welcome-send-color: #24170f;
+  --preview-surface-color: rgba(238, 220, 198, 0.86);
   --preview-surface-bg:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 45%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
-  --preview-surface-border: rgba(255, 255, 255, 0.08);
-  --preview-surface-grid: rgba(255, 255, 255, 0.09);
-  --preview-surface-orb-color: rgba(255, 255, 255, 0.82);
-  --preview-surface-orb-bg: rgba(255, 255, 255, 0.04);
-  --preview-surface-ring: rgba(129, 140, 248, 0.3);
-  --preview-surface-title: rgba(255, 255, 255, 0.96);
-  --preview-surface-text: rgba(255, 255, 255, 0.62);
-  --preview-surface-tip-text: #d1d5db;
-  --preview-surface-tip-bg: rgba(255, 255, 255, 0.04);
-  --preview-surface-tip-border: rgba(255, 255, 255, 0.08);
-  --preview-strip-bg: rgba(255, 255, 255, 0.03);
-  --preview-strip-border: rgba(255, 255, 255, 0.08);
-  --preview-strip-title: rgba(255, 255, 255, 0.94);
-  --preview-strip-text: rgba(255, 255, 255, 0.56);
-  --preview-strip-chip-bg: transparent;
-  --preview-strip-chip-border: rgba(255, 255, 255, 0.08);
-  --preview-strip-chip-text: rgba(255, 255, 255, 0.8);
+    repeating-linear-gradient(180deg, rgba(215, 178, 138, 0.04) 0 1px, transparent 1px 24px),
+    linear-gradient(180deg, #584036, #352823);
+  --preview-surface-border: rgba(230, 201, 171, 0.12);
+  --preview-surface-grid: rgba(230, 201, 171, 0.08);
+  --preview-surface-orb-color: rgba(244, 228, 210, 0.86);
+  --preview-surface-orb-bg: rgba(255, 244, 228, 0.05);
+  --preview-surface-ring: rgba(205, 142, 78, 0.22);
+  --preview-surface-title: rgba(255, 242, 227, 0.96);
+  --preview-surface-text: rgba(224, 200, 173, 0.72);
+  --preview-surface-tip-text: rgba(233, 213, 188, 0.78);
+  --preview-surface-tip-bg: rgba(255, 245, 231, 0.05);
+  --preview-surface-tip-border: rgba(230, 201, 171, 0.12);
+  --preview-strip-bg:
+    linear-gradient(180deg, #4f3a31, #332621);
+  --preview-strip-border: rgba(230, 201, 171, 0.12);
+  --preview-strip-title: rgba(255, 240, 224, 0.92);
+  --preview-strip-text: rgba(221, 197, 169, 0.7);
+  --preview-strip-chip-bg: rgba(255, 242, 227, 0.05);
+  --preview-strip-chip-border: rgba(230, 201, 171, 0.12);
+  --preview-strip-chip-text: rgba(244, 228, 210, 0.84);
 }
 
 .history-sidebar {
@@ -5061,6 +5393,10 @@ watch(
   transform: translateY(-1px);
 }
 
+.workshop--dark .sidebar-icon-btn:hover {
+  background: rgba(205, 142, 78, 0.12);
+}
+
 .sidebar-brand {
   margin-top: 14px;
   font-size: 2rem;
@@ -5093,6 +5429,10 @@ watch(
 
 .sidebar-action-row:hover {
   background: rgba(255,255,255,0.06);
+}
+
+.workshop--dark .sidebar-action-row:hover {
+  background: rgba(205, 142, 78, 0.08);
 }
 
 .sidebar-action-row--muted {
@@ -5311,6 +5651,11 @@ watch(
   position: relative;
 }
 
+.workshop--dark .chat-panel {
+  background:
+    linear-gradient(180deg, rgba(26, 19, 17, 0.32), rgba(12, 9, 8, 0.06));
+}
+
 .chat-panel--welcome {
   flex: 1;
   width: 100%;
@@ -5327,15 +5672,16 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 22px 18px 18px;
-  border-radius: 30px;
+  padding: 24px 22px 20px;
+  border-radius: 32px;
   overflow: hidden;
   background: var(--welcome-panel-bg);
+  border: 1px solid var(--workshop-border);
   box-shadow: var(--welcome-panel-shadow);
 }
 
 .welcome-screen__meta {
-  padding: 4px 4px 18px;
+  padding: 2px 2px 20px;
   color: var(--welcome-meta-color);
 }
 
@@ -5350,28 +5696,33 @@ watch(
 }
 
 .welcome-screen__title {
-  font-size: 1.05rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--welcome-title-color);
 }
 
 .welcome-screen__subtitle {
-  margin-top: 8px;
-  font-size: 0.82rem;
+  margin-top: 10px;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--welcome-subtitle-color);
 }
 
 .welcome-screen__hero {
   flex: 1;
   min-height: 0;
-  padding: 28px 22px;
+  padding: 34px 30px;
   border-radius: 28px;
   background: var(--welcome-hero-bg);
   border: 1px solid var(--welcome-hero-border);
   position: relative;
   overflow: hidden;
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .welcome-screen__hero::before {
@@ -5393,48 +5744,122 @@ watch(
 .welcome-screen__copy {
   position: relative;
   z-index: 1;
-  width: min(560px, 100%);
+  width: min(620px, 100%);
   min-width: 0;
-  padding: 24px 22px;
+  padding: 8px 0 8px 30px;
+  border-left: 1px solid var(--welcome-copy-rule);
 }
 
 .welcome-screen__eyebrow {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0 15px;
+  min-height: 30px;
+  padding: 0 14px;
   border-radius: 999px;
   border: 1px solid var(--welcome-eyebrow-border);
   background: var(--welcome-eyebrow-bg);
   color: var(--welcome-eyebrow-color);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .welcome-screen__headline {
-  margin-top: 26px;
+  margin-top: 22px;
   color: var(--welcome-headline-color);
-  font-size: clamp(2.3rem, 5vw, 3.9rem);
-  line-height: 1.05;
+  max-width: 9ch;
+  font-size: clamp(2.8rem, 5.2vw, 4.8rem);
+  line-height: 1.02;
   letter-spacing: -0.04em;
 }
 
 .welcome-screen__desc {
-  margin-top: 18px;
-  max-width: 520px;
+  margin-top: 20px;
+  max-width: 34rem;
   color: var(--welcome-desc-color);
+  font-size: 1.02rem;
+  line-height: 1.82;
+}
+
+.skill-assistant-hero-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 251, 244, 0.72), rgba(255, 248, 239, 0.54));
+  border: 1px solid rgba(198, 144, 92, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.skill-assistant-hero-panel__intro {
+  display: grid;
+  gap: 8px;
+}
+
+.skill-assistant-hero-panel__kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.skill-assistant-hero-panel__title {
   font-size: 1.08rem;
-  line-height: 1.75;
+  font-weight: 700;
+  color: var(--welcome-headline-color);
+  letter-spacing: -0.02em;
+}
+
+.skill-assistant-hero-panel__desc {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--text-secondary);
+  font-size: 0.94rem;
+  line-height: 1.7;
+}
+
+.skill-assistant-hero-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.skill-assistant-hero-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-assistant-hero-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(188, 139, 94, 0.16);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.skill-assistant-hero-panel__status {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  line-height: 1.6;
 }
 
 .welcome-screen__composer {
-  margin-top: 14px;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 24px;
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px 16px;
+  padding: 16px 18px;
+  border-radius: 26px;
   background: var(--welcome-composer-bg);
   border: 1px solid var(--welcome-composer-border);
   box-shadow: var(--welcome-composer-shadow);
@@ -5443,16 +5868,16 @@ watch(
 }
 
 .welcome-screen__textarea {
-  flex: 1;
-  min-height: 56px;
-  padding: 14px 16px;
-  border: none;
+  min-height: 112px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid var(--textarea-surface-border);
   resize: none;
   outline: none;
-  background: transparent;
+  background: var(--textarea-surface);
   color: var(--welcome-textarea-color);
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.72;
   font-family: inherit;
 }
 
@@ -5460,9 +5885,16 @@ watch(
   color: var(--welcome-placeholder-color);
 }
 
+.welcome-screen__textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
 .welcome-screen__actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   flex-shrink: 0;
 }
@@ -5474,7 +5906,7 @@ watch(
 .welcome-screen__send {
   width: 44px;
   height: 44px;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.04);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -5482,12 +5914,14 @@ watch(
   background: var(--welcome-send-bg);
   color: var(--welcome-send-color);
   cursor: pointer;
-  transition: background 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+  box-shadow: 0 10px 22px rgba(155, 95, 51, 0.2);
+  transition: background 0.16s ease, transform 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease;
 }
 
 .welcome-screen__send:hover:not(:disabled) {
   background: var(--welcome-send-bg-hover);
   transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(155, 95, 51, 0.24);
 }
 
 .welcome-screen__send:disabled {
@@ -5497,22 +5931,24 @@ watch(
 
 .attachment-btn {
   height: 38px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.12));
-  background: var(--bg-card, rgba(255,255,255,0.06));
-  color: var(--text-primary, #e8e8f0);
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--proof-chip-border);
+  background: var(--proof-chip-bg);
+  color: var(--text-primary);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
 }
 
 .attachment-btn:hover:not(:disabled) {
-  background: var(--workshop-hover-bg, rgba(255,255,255,0.08));
-  border-color: rgba(99, 102, 241, 0.28);
+  background: var(--proof-chip-hover-bg);
+  border-color: var(--proof-chip-active-border);
+  transform: translateY(-1px);
 }
 
 .attachment-btn:disabled {
@@ -5522,15 +5958,15 @@ watch(
 
 .attachment-btn--welcome {
   height: 44px;
-  padding: 0 14px;
+  padding: 0 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #0f172a;
-  border-color: rgba(148, 163, 184, 0.28);
+  background: var(--proof-chip-bg);
+  color: var(--text-primary);
+  border-color: var(--proof-chip-border);
 }
 
 .attachment-btn--welcome:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--proof-chip-hover-bg);
 }
 
 .skill-attachment-input {
@@ -5545,16 +5981,21 @@ watch(
 }
 
 .skill-attachment-panel--chat {
-  padding: 0 16px 12px;
+  padding: 0 20px 16px;
   margin-top: 0;
+}
+
+.skill-attachment-panel--welcome {
+  grid-column: 1 / -1;
+  margin-top: -2px;
 }
 
 .skill-attachment-panel__error {
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  background: rgba(127, 29, 29, 0.16);
-  color: #fecaca;
+  border: 1px solid rgba(173, 90, 67, 0.24);
+  background: rgba(173, 90, 67, 0.1);
+  color: #8b3d2c;
   font-size: 0.8rem;
 }
 
@@ -5567,7 +6008,9 @@ watch(
 .skill-attachment-group__title {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .skill-attachment-list {
@@ -5584,8 +6027,9 @@ watch(
   max-width: min(100%, 320px);
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(160, 118, 81, 0.18);
+  background: var(--proof-chip-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .skill-attachment-chip__main {
@@ -5605,12 +6049,12 @@ watch(
 .skill-attachment-chip__name {
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--text-primary, #f8fafc);
+  color: var(--text-primary);
 }
 
 .skill-attachment-chip__meta {
   font-size: 0.72rem;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
 }
 
 .skill-attachment-chip__remove {
@@ -5618,7 +6062,7 @@ watch(
   height: 22px;
   border: none;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.22);
+  background: rgba(116, 88, 64, 0.12);
   color: inherit;
   display: inline-flex;
   align-items: center;
@@ -5628,37 +6072,40 @@ watch(
 }
 
 .skill-attachment-chip__remove:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(173, 90, 67, 0.16);
 }
 
 .skill-attachment-chip--pending {
-  border-color: rgba(96, 165, 250, 0.22);
-  background: rgba(30, 64, 175, 0.12);
+  border-color: rgba(182, 123, 53, 0.24);
+  background: rgba(182, 123, 53, 0.08);
 }
 
 .skill-attachment-chip--success {
-  border-color: rgba(34, 197, 94, 0.22);
-  background: rgba(21, 128, 61, 0.12);
+  border-color: rgba(92, 122, 81, 0.24);
+  background: rgba(92, 122, 81, 0.1);
 }
 
 .skill-attachment-chip--empty {
-  border-color: rgba(245, 158, 11, 0.22);
-  background: rgba(180, 83, 9, 0.12);
+  border-color: rgba(166, 117, 66, 0.24);
+  background: rgba(166, 117, 66, 0.1);
 }
 
 .skill-attachment-chip--failed {
-  border-color: rgba(239, 68, 68, 0.24);
-  background: rgba(127, 29, 29, 0.16);
+  border-color: rgba(173, 90, 67, 0.24);
+  background: rgba(173, 90, 67, 0.12);
 }
 
 .chat-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 16px;
+  padding: 16px 20px 15px;
   border-bottom: 1px solid var(--workshop-border);
   flex-shrink: 0;
+  background: var(--rail-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 .chat-header-main {
   min-width: 0;
@@ -5671,51 +6118,172 @@ watch(
 .chat-title-input {
   min-width: 0;
   width: min(320px, 100%);
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
   border: 1px solid var(--topbar-border);
   background: var(--workshop-panel-bg);
   color: var(--text-primary);
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.96rem;
+  font-weight: 700;
   outline: none;
 }
 .chat-title-input:focus {
-  border-color: var(--accent, #6366f1);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.16);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
-.chat-title { font-weight: 600; font-size: 0.95rem; }
+.chat-title {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
 .title-edit-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  border: none;
-  background: var(--workshop-panel-bg);
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--proof-chip-border);
+  background: var(--proof-chip-bg);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 .title-edit-btn:hover {
-  background: var(--workshop-hover-bg);
-  color: var(--text-primary);
+  background: var(--proof-chip-hover-bg);
+  border-color: var(--proof-chip-active-border);
+  color: var(--accent);
 }
 .chat-subtitle {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-.header-actions { display: flex; gap: 6px; }
+
+.skill-assistant-inline-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 251, 244, 0.9), rgba(255, 248, 239, 0.72));
+  border: 1px solid rgba(198, 144, 92, 0.16);
+}
+
+.skill-assistant-inline-bar__meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skill-assistant-inline-bar__kicker {
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.skill-assistant-inline-bar__text {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.skill-assistant-inline-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skill-console-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(188, 139, 94, 0.18);
+  background: linear-gradient(180deg, rgba(187, 126, 74, 0.14), rgba(187, 126, 74, 0.06));
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.skill-console-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(188, 139, 94, 0.3);
+  background: linear-gradient(180deg, rgba(187, 126, 74, 0.18), rgba(187, 126, 74, 0.09));
+  box-shadow: 0 10px 24px rgba(155, 95, 51, 0.1);
+}
+
+.skill-console-btn--secondary {
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-secondary);
+}
+
+.skill-console-btn--compact {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+}
+
+.workshop--dark .skill-assistant-hero-panel,
+.workshop--dark .skill-assistant-inline-bar {
+  background: linear-gradient(180deg, rgba(89, 62, 47, 0.88), rgba(48, 34, 28, 0.82));
+  border-color: rgba(230, 201, 171, 0.14);
+}
+
+.workshop--dark .skill-assistant-hero-panel__chip {
+  background: rgba(255, 244, 228, 0.06);
+  border-color: rgba(230, 201, 171, 0.14);
+  color: rgba(232, 212, 188, 0.84);
+}
+
+.workshop--dark .skill-console-btn {
+  border-color: rgba(230, 201, 171, 0.16);
+  background: linear-gradient(180deg, rgba(205, 142, 78, 0.16), rgba(205, 142, 78, 0.08));
+  color: #f6e9d8;
+}
+
+.workshop--dark .skill-console-btn--secondary {
+  background: rgba(255, 244, 228, 0.06);
+  color: rgba(230, 212, 190, 0.86);
+}
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .icon-btn {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-secondary); padding: 5px; border-radius: 6px;
-  display: flex; align-items: center;
+  width: 34px;
+  height: 34px;
+  background: var(--proof-chip-bg);
+  border: 1px solid var(--proof-chip-border);
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
-.icon-btn:hover { background: var(--workshop-hover-bg); color: var(--text-primary); }
+.icon-btn:hover {
+  background: var(--proof-chip-hover-bg);
+  border-color: var(--proof-chip-active-border);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
 .icon-btn--active {
-  background: rgba(99,102,241,0.18);
-  color: var(--accent, #a5b4fc);
+  background: var(--proof-chip-active-bg);
+  border-color: var(--proof-chip-active-border);
+  color: var(--accent);
 }
 
 .messages {
@@ -5725,6 +6293,11 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.workshop--dark .messages {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(205, 142, 78, 0.05), transparent 18%);
 }
 .empty-hint { text-align: center; color: var(--text-secondary); margin-top: 60px; font-size: 0.9rem; }
 
@@ -5754,6 +6327,11 @@ watch(
   word-break: break-word;
 }
 
+.workshop--dark .user-bubble {
+  color: #24170f;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+}
+
 /* VMarkdownView 鍦ㄧ传鑹叉皵娉″唴锛氬己鍒舵祬鑹插瓧锛岄伩鍏?dark 涓婚涓庤儗鏅啿绐?*/
 .user-bubble--md :deep(.markdown-body) {
   color: #fff !important;
@@ -5776,10 +6354,10 @@ watch(
   padding: 14px 14px 12px;
   border-radius: 22px;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.22), transparent 38%),
-    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025));
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 18px 50px rgba(0,0,0,0.2);
+    radial-gradient(circle at top left, rgba(212, 161, 109, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(255,248,238,0.06), rgba(255,255,255,0.025));
+  border: 1px solid rgba(191, 143, 95, 0.14);
+  box-shadow: 0 18px 50px rgba(53, 35, 23, 0.18);
 }
 
 .agentDo-live-header {
@@ -5795,8 +6373,8 @@ watch(
   gap: 7px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #c7d2fe;
+  background: rgba(212, 161, 109, 0.12);
+  color: #f3dbc0;
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -5807,8 +6385,8 @@ watch(
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #818cf8;
-  box-shadow: 0 0 0 6px rgba(129, 140, 248, 0.14);
+  background: var(--accent);
+  box-shadow: 0 0 0 6px rgba(212, 161, 109, 0.12);
   animation: agentDoPulse 1.8s infinite;
 }
 
@@ -6065,7 +6643,7 @@ watch(
 
 .agentDo-step-stage {
   font-size: 0.72rem;
-  color: #a5b4fc;
+  color: var(--accent);
   margin-bottom: 4px;
 }
 
@@ -6379,15 +6957,15 @@ watch(
   font-size: 0.75rem;
   padding: 4px 12px;
   border-radius: 6px;
-  border: 1px solid rgba(99, 102, 241, 0.35);
-  background: rgba(99, 102, 241, 0.12);
-  color: #a5b4fc;
+  border: 1px solid rgba(155, 95, 51, 0.28);
+  background: rgba(155, 95, 51, 0.1);
+  color: #d4a16d;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 .stream-code-copy:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.22);
-  color: #e0e7ff;
+  background: rgba(155, 95, 51, 0.18);
+  color: #f8e8d4;
 }
 .stream-code-copy:disabled {
   opacity: 0.45;
@@ -6527,37 +7105,55 @@ watch(
 .input-area {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--bg-glass-border, rgba(255,255,255,0.08));
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 18px 20px 16px;
+  border-top: 1px solid var(--workshop-border);
   flex-shrink: 0;
+  background: var(--input-tray-bg);
 }
 
 .input-area textarea {
-  flex: 1;
-  background: var(--bg-card, rgba(255,255,255,0.06));
-  border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.1));
-  border-radius: 10px;
-  color: var(--text-primary, #e8e8f0);
-  padding: 9px 12px;
-  font-size: 0.9rem;
+  flex: 1 0 100%;
+  width: 100%;
+  background: var(--workshop-input-bg);
+  border: 1px solid var(--workshop-input-border);
+  border-radius: 20px;
+  color: var(--text-primary);
+  padding: 16px 18px;
+  font-size: 0.96rem;
   resize: none;
   outline: none;
-  line-height: 1.5;
-  min-height: 38px;
+  line-height: 1.68;
+  min-height: 88px;
   font-family: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
-.input-area textarea:focus { border-color: var(--accent, #6366f1); }
-.input-area textarea::placeholder { color: var(--text-secondary, #666); }
+.input-area textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+.input-area textarea::placeholder { color: var(--text-secondary); }
 
 .send-btn {
-  height: 36px; border-radius: 9px; border: none;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; transition: background 0.15s;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 10px 20px rgba(155, 95, 51, 0.2);
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.send-btn { width: 36px; }
-.send-btn { background: var(--accent, #6366f1); color: #fff; }
-.send-btn:hover:not(:disabled) { background: #4f46e5; }
+.send-btn { width: 40px; }
+.send-btn { background: var(--accent); color: #fff8ef; }
+.send-btn:hover:not(:disabled) {
+  background: #874c22;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(155, 95, 51, 0.24);
+}
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .mode-switch {
   display: inline-flex;
@@ -6565,19 +7161,19 @@ watch(
   gap: 4px;
   height: 42px;
   padding: 4px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  border-radius: 999px;
+  background: var(--proof-chip-bg);
+  border: 1px solid var(--proof-chip-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.24);
 }
 .mode-switch__option {
   min-width: 84px;
   height: 100%;
-  padding: 0 14px;
+  padding: 0 16px;
   border: none;
-  border-radius: 10px;
+  border-radius: 999px;
   background: transparent;
-  color: var(--text-secondary, #9ca3af);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   flex-direction: column;
@@ -6589,13 +7185,13 @@ watch(
   transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 .mode-switch__option:hover {
-  color: var(--text-primary, #f3f4f6);
-  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  background: var(--proof-chip-hover-bg);
 }
 .mode-switch__option--active {
-  background: linear-gradient(180deg, rgba(99,102,241,0.28), rgba(79,70,229,0.22));
-  color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(165,180,252,0.32), 0 6px 16px rgba(79,70,229,0.18);
+  background: linear-gradient(180deg, rgba(155, 95, 51, 0.94), rgba(128, 74, 34, 0.96));
+  color: #fff8ef;
+  box-shadow: 0 10px 18px rgba(155, 95, 51, 0.18);
 }
 .mode-switch__label {
   font-size: 0.78rem;
@@ -6604,10 +7200,11 @@ watch(
 .mode-switch__hint {
   font-size: 0.64rem;
   line-height: 1;
-  color: rgba(255,255,255,0.58);
+  color: var(--text-secondary);
+  opacity: 0.85;
 }
 .mode-switch__option--active .mode-switch__hint {
-  color: rgba(255,255,255,0.84);
+  color: rgba(255, 248, 239, 0.82);
 }
 
 .results-panel {
@@ -6621,18 +7218,27 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 16px 20px 15px;
   border-bottom: 1px solid var(--workshop-border);
   flex-shrink: 0;
+  background: var(--rail-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
-.results-title { font-weight: 600; font-size: 0.95rem; }
+.results-title {
+  font-weight: 700;
+  font-size: 0.96rem;
+  letter-spacing: -0.02em;
+}
 .mode-tag {
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: 0.68rem;
+  padding: 4px 10px;
   border-radius: 20px;
-  background: rgba(99,102,241,0.15);
-  color: var(--accent, #6366f1);
-  border: 1px solid rgba(99,102,241,0.25);
+  background: rgba(155, 95, 51, 0.08);
+  color: var(--accent);
+  border: 1px solid rgba(155, 95, 51, 0.22);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .results-content {
@@ -6657,6 +7263,7 @@ watch(
   display: flex;
   flex-direction: column;
   min-height: 0;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 .workspace-browser-header {
@@ -6664,31 +7271,40 @@ watch(
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 14px 12px;
+  padding: 16px 16px 14px;
   border-bottom: 1px solid var(--workshop-border);
 }
 
 .workspace-browser-title {
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .workspace-browser-subtitle {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 0.76rem;
   color: var(--text-secondary);
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
 .workspace-refresh-btn {
   border: 1px solid var(--workshop-border);
-  background: var(--workshop-panel-bg);
+  background: var(--proof-chip-bg);
   color: var(--text-primary);
-  border-radius: 10px;
-  padding: 7px 12px;
+  border-radius: 999px;
+  padding: 7px 13px;
   font-size: 0.78rem;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.workspace-refresh-btn:hover:not(:disabled) {
+  background: var(--proof-chip-hover-bg);
+  border-color: var(--proof-chip-active-border);
+  transform: translateY(-1px);
 }
 
 .workspace-refresh-btn:disabled {
@@ -6701,9 +7317,9 @@ watch(
   margin: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  color: #fecaca;
-  background: rgba(127,29,29,0.35);
-  border: 1px solid rgba(248,113,113,0.2);
+  color: #f4d0c6;
+  background: rgba(139, 61, 44, 0.32);
+  border: 1px solid rgba(173, 90, 67, 0.22);
   font-size: 0.84rem;
 }
 
@@ -6723,7 +7339,7 @@ watch(
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px 0 14px;
+  padding: 14px 8px 18px;
 }
 
 .workspace-tree-node {
@@ -6731,8 +7347,8 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 12px;
+  padding: 8px 10px;
+  border-radius: 14px;
 }
 
 .workspace-tree-main {
@@ -6761,7 +7377,7 @@ watch(
 }
 
 .workspace-tree-node.is-selected {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(155, 95, 51, 0.12);
 }
 
 .workspace-tree-caret {
@@ -6780,9 +7396,9 @@ watch(
 
 .workspace-tree-icon {
   min-width: 42px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.12);
+  background: rgba(155, 95, 51, 0.1);
   color: var(--text-secondary);
   font-size: 0.68rem;
   font-weight: 700;
@@ -6804,9 +7420,9 @@ watch(
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(155, 95, 51, 0.22);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(155, 95, 51, 0.08);
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
@@ -6817,9 +7433,9 @@ watch(
 }
 
 .workspace-node-download:hover {
-  background: rgba(99, 102, 241, 0.16);
-  border-color: rgba(99, 102, 241, 0.32);
-  color: var(--text-primary);
+  background: rgba(155, 95, 51, 0.14);
+  border-color: rgba(155, 95, 51, 0.32);
+  color: var(--accent);
 }
 
 .results-main {
@@ -6834,7 +7450,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--workshop-border);
   background: var(--workshop-panel-bg);
   flex-shrink: 0;
@@ -6842,22 +7458,23 @@ watch(
 
 .results-tab {
   border: 1px solid var(--workshop-border);
-  background: var(--workshop-panel-bg);
+  background: var(--proof-chip-bg);
   color: var(--text-secondary);
-  border-radius: 12px;
-  padding: 8px 14px;
+  border-radius: 999px;
+  padding: 8px 15px;
   font-size: 0.82rem;
   cursor: pointer;
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
 .results-tab.active {
-  color: var(--text-primary);
-  background: var(--workshop-hover-strong-bg);
-  border-color: var(--workshop-input-border);
+  color: var(--accent);
+  background: rgba(155, 95, 51, 0.1);
+  border-color: rgba(155, 95, 51, 0.26);
 }
 
 .file-viewer {
@@ -6872,49 +7489,53 @@ watch(
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--workshop-border);
+  background: var(--file-header-bg);
 }
 
 .file-viewer-title {
-  font-size: 0.96rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.94);
+  color: var(--text-primary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .file-viewer-subtitle {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.54);
+  color: var(--text-secondary);
   word-break: break-word;
+  line-height: 1.55;
 }
 
 .file-viewer-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: rgba(8,8,12,0.78);
+  background: linear-gradient(180deg, rgba(37, 25, 18, 0.96), rgba(27, 18, 13, 0.98));
 }
 
 .file-viewer-notice {
   margin: 12px 12px 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(250,204,21,0.1);
-  border: 1px solid rgba(250,204,21,0.18);
-  color: #fde68a;
+  background: rgba(182, 123, 53, 0.12);
+  border: 1px solid rgba(182, 123, 53, 0.2);
+  color: #f0c995;
   font-size: 0.78rem;
 }
 
 .file-viewer-code {
   margin: 0;
-  padding: 18px;
+  padding: 20px 18px;
   white-space: pre;
   overflow: auto;
   font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
   font-size: 0.8rem;
-  line-height: 1.58;
-  color: #d8e5f2;
+  line-height: 1.62;
+  color: #ead8c1;
 }
 
 .debug-panel {
@@ -7089,7 +7710,7 @@ watch(
 .results-empty {
   flex: 1;
   display: flex;
-  padding: 22px;
+  padding: 24px;
   align-items: stretch;
   justify-content: center;
 }
@@ -7097,14 +7718,15 @@ watch(
 .preview-waiting-shell {
   width: min(560px, 100%);
   margin: 0 auto;
-  padding: 28px 26px;
-  border-radius: 28px;
+  padding: 30px 28px;
+  border-radius: 30px;
   text-align: center;
   color: var(--preview-surface-color);
   background: var(--preview-surface-bg);
   border: 1px solid var(--preview-surface-border);
   position: relative;
   overflow: hidden;
+  box-shadow: var(--proof-shadow);
 }
 
 .preview-waiting-shell.is-busy::before {
@@ -7128,6 +7750,7 @@ watch(
   color: var(--preview-surface-orb-color);
   background: var(--preview-surface-orb-bg);
   position: relative;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16);
 }
 
 .preview-waiting-ring {
@@ -7138,15 +7761,17 @@ watch(
 }
 
 .preview-waiting-title {
-  font-size: 1.08rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--preview-surface-title);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .preview-waiting-text {
-  margin: 10px auto 0;
+  margin: 12px auto 0;
   max-width: 420px;
-  line-height: 1.65;
+  line-height: 1.75;
   font-size: 0.9rem;
   color: var(--preview-surface-text);
 }
@@ -7160,12 +7785,14 @@ watch(
 }
 
 .preview-waiting-tips span {
-  padding: 7px 12px;
+  padding: 7px 13px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--preview-surface-tip-text);
   border: 1px solid var(--preview-surface-tip-border);
   background: var(--preview-surface-tip-bg);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .preview-iframe {
@@ -7189,24 +7816,34 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: 10px 16px;
   background: var(--preview-strip-bg);
   border-bottom: 1px solid var(--preview-strip-border);
   flex-shrink: 0;
 }
-.code-lang-tag { font-size: 0.78rem; color: var(--text-secondary, #888); font-family: monospace; }
+.code-lang-tag {
+  font-size: 0.72rem;
+  color: var(--preview-strip-text);
+  font-family: monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .copy-btn {
   font-size: 0.78rem;
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid var(--bg-glass-border, rgba(255,255,255,0.1));
-  background: none;
-  color: var(--text-secondary, #888);
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--proof-chip-border);
+  background: var(--proof-chip-bg);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
-.copy-btn:hover { color: var(--text-primary, #e8e8f0); }
-.copy-btn.copied { color: #34d399; border-color: rgba(52,211,153,0.3); }
+.copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--proof-chip-active-border);
+  background: var(--proof-chip-hover-bg);
+}
+.copy-btn.copied { color: #6b8a61; border-color: rgba(107, 138, 97, 0.32); }
 
 .url-preview {
   flex: 1;
@@ -7222,7 +7859,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--preview-strip-border);
   background: var(--preview-strip-bg);
 }
@@ -7243,48 +7880,53 @@ watch(
 }
 
 .preview-status-title {
-  font-size: 0.84rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--preview-strip-title);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .preview-status-subtitle {
-  margin-top: 3px;
+  margin-top: 5px;
   font-size: 0.75rem;
   color: var(--preview-strip-text);
+  line-height: 1.55;
 }
 
 .preview-status-chip {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   border: 1px solid var(--preview-strip-chip-border);
   background: var(--preview-strip-chip-bg);
   color: var(--preview-strip-chip-text);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .preview-status-bar.status-waiting .preview-status-dot,
 .preview-status-bar.status-loading .preview-status-dot {
-  background: #facc15;
-  box-shadow: 0 0 0 6px rgba(250,204,21,0.12);
+  background: var(--preview-status-waiting);
+  box-shadow: 0 0 0 6px rgba(182, 123, 53, 0.12);
 }
 
 .preview-status-bar.status-ready .preview-status-dot {
-  background: #4ade80;
-  box-shadow: 0 0 0 6px rgba(74,222,128,0.12);
+  background: var(--preview-status-ready);
+  box-shadow: 0 0 0 6px rgba(92, 122, 81, 0.12);
 }
 
 .preview-status-bar.status-error .preview-status-dot {
-  background: #f87171;
-  box-shadow: 0 0 0 6px rgba(248,113,113,0.12);
+  background: var(--preview-status-error);
+  box-shadow: 0 0 0 6px rgba(173, 90, 67, 0.12);
 }
 
 .url-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 10px 16px;
   background: var(--preview-strip-bg);
   border-bottom: 1px solid var(--preview-strip-border);
   flex-shrink: 0;
@@ -7304,16 +7946,23 @@ watch(
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--accent, #6366f1);
+  color: var(--accent);
   text-decoration: none;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   flex-shrink: 0;
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: 1px solid rgba(99,102,241,0.25);
-  transition: background 0.15s;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(155, 95, 51, 0.22);
+  background: rgba(155, 95, 51, 0.06);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
-.url-open-btn:hover { background: rgba(99,102,241,0.1); }
+.url-open-btn:hover {
+  background: rgba(155, 95, 51, 0.12);
+  border-color: rgba(155, 95, 51, 0.28);
+  transform: translateY(-1px);
+}
 
 .url-fallback {
   flex: 1;
@@ -7321,13 +7970,13 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: var(--text-secondary, #888);
+  gap: 14px;
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
 .fallback-link {
-  color: var(--accent, #6366f1);
+  color: var(--accent);
   text-decoration: none;
   font-size: 0.88rem;
 }
@@ -7354,8 +8003,8 @@ watch(
   gap: 14px;
   padding: 8px 16px;
   margin: -16px -16px 12px;
-  background: linear-gradient(90deg, rgba(99,102,241,0.15) 0%, rgba(15,15,19,0.95) 60%);
-  border-bottom: 1px solid rgba(99,102,241,0.25);
+  background: var(--stream-bar-bg);
+  border-bottom: 1px solid var(--workshop-border);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -7373,7 +8022,7 @@ watch(
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #818cf8;
+  background: var(--accent);
   flex-shrink: 0;
   animation: statusPulse 1.5s ease-in-out infinite;
 }
@@ -7386,7 +8035,7 @@ watch(
 .stream-status-phase {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7403,7 +8052,7 @@ watch(
 .stream-status-steps {
   font-size: 0.72rem;
   font-weight: 600;
-  color: rgba(255,255,255,0.6);
+  color: var(--text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -7412,7 +8061,7 @@ watch(
   flex: 1;
   height: 4px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(155, 95, 51, 0.12);
   overflow: hidden;
   min-width: 40px;
 }
@@ -7420,7 +8069,7 @@ watch(
 .stream-status-progress-fill {
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(90deg, #4f46e5, #818cf8);
+  background: linear-gradient(90deg, #a5693c, #d4a16d);
   transition: width 0.4s ease;
 }
 
@@ -7431,7 +8080,7 @@ watch(
 .stream-status-elapsed {
   font-size: 0.75rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.5);
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.03em;
 }
@@ -7447,31 +8096,31 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 8px 18px;
-  border: 1px solid rgba(99,102,241,0.4);
+  border: 1px solid var(--proof-chip-active-border);
   border-radius: 999px;
-  background: rgba(25,25,35,0.92);
-  color: #c7d2fe;
+  background: var(--scroll-btn-bg);
+  color: var(--scroll-btn-text);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 22px rgba(78, 53, 33, 0.18);
   transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .scroll-to-bottom-btn:hover {
-  background: rgba(79,70,229,0.6);
-  box-shadow: 0 6px 28px rgba(79,70,229,0.35);
+  background: var(--scroll-btn-hover-bg);
+  box-shadow: 0 12px 28px rgba(78, 53, 33, 0.24);
   transform: translateX(-50%) translateY(-2px);
 }
 
 .scroll-btn-badge {
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(99,102,241,0.5);
+  background: rgba(155, 95, 51, 0.18);
   font-size: 0.68rem;
-  color: #e0e7ff;
+  color: inherit;
   font-weight: 700;
 }
 
@@ -7493,11 +8142,11 @@ watch(
   margin-left: auto;
   padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(99,102,241,0.15);
-  border: 1px solid rgba(129,140,248,0.25);
+  background: rgba(212, 161, 109, 0.12);
+  border: 1px solid rgba(212, 161, 109, 0.24);
   font-size: 0.75rem;
   font-weight: 700;
-  color: #a5b4fc;
+  color: #f0d2b0;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex-shrink: 0;
@@ -7512,8 +8161,8 @@ watch(
   margin: 0 0 14px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(99,102,241,0.08);
-  border: 1px solid rgba(129,140,248,0.15);
+  background: rgba(212, 161, 109, 0.08);
+  border: 1px solid rgba(212, 161, 109, 0.14);
 }
 
 .agentDo-progress-info {
@@ -7526,7 +8175,7 @@ watch(
 .agentDo-progress-label {
   font-size: 0.74rem;
   font-weight: 700;
-  color: #a5b4fc;
+  color: #e4bb90;
 }
 
 .agentDo-progress-detail {
@@ -7545,7 +8194,7 @@ watch(
 .agentDo-progress-fill {
   height: 100%;
   border-radius: 6px;
-  background: linear-gradient(90deg, #4f46e5, #818cf8, #a78bfa);
+  background: linear-gradient(90deg, #a5693c, #d4a16d, #e7c59c);
   transition: width 0.5s ease;
   position: relative;
 }
@@ -7806,10 +8455,10 @@ watch(
 
   .mobile-pane-switch__btn {
     flex: 1;
-    border: 1px solid var(--workshop-border);
-    background: var(--workshop-panel-bg);
-    color: var(--text-secondary);
-    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 248, 238, 0.06);
+    color: rgba(255, 240, 224, 0.72);
+    border-radius: 999px;
     padding: 10px 12px;
     font-size: 0.84rem;
     font-weight: 700;
@@ -7818,9 +8467,9 @@ watch(
   }
 
   .mobile-pane-switch__btn.active {
-    background: rgba(99,102,241,0.18);
-    border-color: rgba(99,102,241,0.34);
-    color: var(--text-primary);
+    background: rgba(212, 161, 109, 0.18);
+    border-color: rgba(212, 161, 109, 0.34);
+    color: #fff4e7;
   }
 
   .chat-panel,
@@ -7861,6 +8510,22 @@ watch(
 
   .welcome-screen__copy {
     padding: 12px 10px;
+    border-left: none;
+  }
+
+  .skill-assistant-hero-panel {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .skill-assistant-hero-panel__actions,
+  .skill-assistant-inline-bar__actions {
+    width: 100%;
+  }
+
+  .skill-console-btn {
+    flex: 1 1 180px;
+    justify-content: center;
   }
 
   .welcome-screen__headline {
@@ -7873,7 +8538,7 @@ watch(
   }
 
   .welcome-screen__composer {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
     gap: 10px;
     padding: 12px 14px;
@@ -7890,6 +8555,11 @@ watch(
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
+  }
+
+  .skill-assistant-inline-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .attachment-btn {

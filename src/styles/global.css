@@ -1,123 +1,177 @@
 :root {
-  --bg-primary: #f5f7fb;
-  --bg-secondary: #e8edf7;
-  --bg-card: rgba(255, 255, 255, 0.78);
-  --bg-card-hover: rgba(255, 255, 255, 0.94);
-  --bg-glass: rgba(255, 255, 255, 0.74);
-  --bg-glass-border: rgba(148, 163, 184, 0.24);
-  --bg-elevated: rgba(255, 255, 255, 0.9);
-  --bg-input: rgba(255, 255, 255, 0.92);
-  --bg-muted: rgba(226, 232, 240, 0.72);
-  --bg-overlay: rgba(15, 23, 42, 0.14);
+  color-scheme: light;
+
+  --bg-primary: #fff8f1;
+  --bg-secondary: #f3eadf;
+  --bg-card: rgba(251, 246, 239, 0.92);
+  --bg-card-hover: rgba(247, 239, 229, 0.98);
+  --bg-glass: rgba(251, 246, 239, 0.88);
+  --bg-glass-border: rgba(124, 98, 74, 0.18);
+  --bg-elevated: rgba(255, 252, 247, 0.96);
+  --bg-input: rgba(255, 251, 246, 0.98);
+  --bg-muted: rgba(237, 226, 211, 0.76);
+  --bg-overlay: rgba(49, 34, 22, 0.24);
+  --bg-overlay-strong: rgba(49, 34, 22, 0.42);
+
   --shell-bg:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.15), transparent 34%),
-    linear-gradient(180deg, #f7f9fc 0%, #eef3fb 100%);
+    radial-gradient(circle at top left, rgba(196, 106, 45, 0.16), transparent 34%),
+    radial-gradient(circle at top right, rgba(111, 123, 92, 0.1), transparent 30%),
+    linear-gradient(180deg, #fffaf3 0%, #f7efe4 44%, #efe3d5 100%);
   --sidebar-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 247, 252, 0.92)),
-    rgba(255, 255, 255, 0.7);
-  --topbar-bg: rgba(255, 255, 255, 0.82);
-  --topbar-border: rgba(148, 163, 184, 0.2);
-  --theme-toggle-bg: rgba(255, 255, 255, 0.84);
-  --theme-toggle-bg-hover: rgba(255, 255, 255, 0.96);
-  --theme-toggle-border: rgba(148, 163, 184, 0.28);
-  --theme-toggle-icon-bg: rgba(59, 130, 246, 0.12);
-  --sidebar-icon-color: #5b67f1;
-  --sidebar-icon-bg: rgba(99, 102, 241, 0.12);
-  --sidebar-icon-active-color: #4a53d8;
-  --sidebar-icon-active-bg: rgba(99, 102, 241, 0.18);
-  --sidebar-create-icon-color: #5663f1;
-  --sidebar-create-icon-bg: rgba(99, 102, 241, 0.14);
-  --brand-mark-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 242, 252, 0.9));
-  --brand-mark-border: rgba(148, 163, 184, 0.2);
-  --workshop-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.96));
-  --workshop-border: rgba(148, 163, 184, 0.18);
-  --workshop-panel-bg: rgba(255, 255, 255, 0.72);
-  --workshop-panel-strong-bg: rgba(255, 255, 255, 0.9);
-  --workshop-panel-soft-bg: rgba(226, 232, 240, 0.48);
-  --workshop-hover-bg: rgba(148, 163, 184, 0.1);
-  --workshop-hover-strong-bg: rgba(148, 163, 184, 0.16);
-  --workshop-input-bg: rgba(255, 255, 255, 0.94);
-  --workshop-input-border: rgba(99, 102, 241, 0.24);
-  --workshop-inset-bg: rgba(248, 250, 252, 0.88);
-  --workshop-code-bg: rgba(15, 23, 42, 0.06);
+    linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(244, 235, 223, 0.96)),
+    rgba(255, 250, 245, 0.88);
+  --topbar-bg: rgba(255, 251, 246, 0.92);
+  --topbar-border: rgba(124, 98, 74, 0.18);
+  --theme-toggle-bg: rgba(255, 251, 246, 0.9);
+  --theme-toggle-bg-hover: rgba(251, 242, 231, 0.98);
+  --theme-toggle-border: rgba(124, 98, 74, 0.18);
+  --theme-toggle-icon-bg: rgba(196, 106, 45, 0.12);
 
-  --text-primary: #172033;
-  --text-secondary: #52607a;
-  --text-muted: #7a8699;
-  --text-contrast: #ffffff;
+  --sidebar-icon-color: #8f5b31;
+  --sidebar-icon-bg: rgba(196, 106, 45, 0.12);
+  --sidebar-icon-active-color: #b35d25;
+  --sidebar-icon-active-bg: rgba(196, 106, 45, 0.18);
+  --sidebar-create-icon-color: #7c654d;
+  --sidebar-create-icon-bg: rgba(124, 98, 74, 0.12);
+  --brand-mark-bg: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(243, 230, 215, 0.96));
+  --brand-mark-border: rgba(124, 98, 74, 0.2);
 
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.3);
+  --workshop-bg: linear-gradient(180deg, rgba(255, 252, 247, 0.94), rgba(245, 235, 223, 0.98));
+  --workshop-border: rgba(124, 98, 74, 0.16);
+  --workshop-panel-bg: rgba(255, 251, 246, 0.82);
+  --workshop-panel-strong-bg: rgba(255, 251, 246, 0.94);
+  --workshop-panel-soft-bg: rgba(241, 229, 214, 0.62);
+  --workshop-hover-bg: rgba(196, 106, 45, 0.08);
+  --workshop-hover-strong-bg: rgba(196, 106, 45, 0.14);
+  --workshop-input-bg: rgba(255, 251, 246, 0.98);
+  --workshop-input-border: rgba(196, 106, 45, 0.22);
+  --workshop-inset-bg: rgba(247, 239, 229, 0.88);
+  --workshop-code-bg: rgba(83, 60, 41, 0.06);
 
-  --shadow-soft: 0 10px 30px rgba(148, 163, 184, 0.18);
-  --shadow-card: 0 24px 60px rgba(148, 163, 184, 0.26);
-  --shadow-hover: 0 18px 44px rgba(100, 116, 139, 0.22);
+  --text-primary: #241c18;
+  --text-secondary: #6e6258;
+  --text-muted: #948679;
+  --text-contrast: #fffaf3;
+  --kicker-color: #8f6a49;
 
-  --radius-sm: 8px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --accent: #c46a2d;
+  --accent-hover: #a95424;
+  --accent-soft: rgba(196, 106, 45, 0.14);
+  --accent-strong: #7f3f1d;
+  --accent-glow: rgba(196, 106, 45, 0.18);
+  --support-olive: #6f7b5c;
+  --support-burgundy: #8d4637;
+
+  --border-soft: rgba(124, 98, 74, 0.16);
+  --border-strong: rgba(124, 98, 74, 0.28);
+  --danger: #8d4637;
+  --danger-bg: rgba(141, 70, 55, 0.12);
+  --danger-border: rgba(141, 70, 55, 0.24);
+
+  --shadow-soft: 0 12px 32px rgba(74, 52, 31, 0.08);
+  --shadow-card: 0 20px 54px rgba(74, 52, 31, 0.12);
+  --shadow-hover: 0 24px 62px rgba(74, 52, 31, 0.16);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+
+  --radius-sm: 10px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+  --space-7: 72px;
 
   --transition-fast: 0.2s ease;
-  --transition-smooth: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.38s cubic-bezier(0.35, 0, 0.2, 1);
 
-  --font-family-base: 'Alibaba PuHuiTi 3.0', 'Alibaba PuHuiTi', 'AlibabaPuHuiTi-3-55-Regular',
-    'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans SC', sans-serif;
-  --font-family-display: 'Alibaba PuHuiTi 3.0', 'Alibaba PuHuiTi', 'AlibabaPuHuiTi-3-65-Medium',
-    'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans SC', sans-serif;
+  --font-family-base: 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB',
+    'Noto Sans SC', sans-serif;
+  --font-family-display: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', Georgia, serif;
+  --font-family-mono: 'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
 }
 
 [data-theme='dark'] {
-  --bg-primary: #1a1a1f;
-  --bg-secondary: #242429;
-  --bg-card: rgba(255, 255, 255, 0.06);
-  --bg-card-hover: rgba(255, 255, 255, 0.1);
-  --bg-glass: rgba(255, 255, 255, 0.08);
-  --bg-glass-border: rgba(255, 255, 255, 0.12);
-  --bg-elevated: rgba(255, 255, 255, 0.08);
-  --bg-input: rgba(0, 0, 0, 0.25);
-  --bg-muted: rgba(255, 255, 255, 0.04);
-  --bg-overlay: rgba(6, 8, 14, 0.6);
+  color-scheme: dark;
+
+  --bg-primary: #171210;
+  --bg-secondary: #211916;
+  --bg-card: #3b2b24;
+  --bg-card-hover: #4b3730;
+  --bg-glass: rgba(45, 33, 28, 0.94);
+  --bg-glass-border: rgba(230, 201, 171, 0.12);
+  --bg-elevated: #4a362d;
+  --bg-input: #352721;
+  --bg-muted: rgba(255, 244, 229, 0.08);
+  --bg-overlay: rgba(5, 4, 3, 0.66);
+  --bg-overlay-strong: rgba(5, 4, 3, 0.82);
+
   --shell-bg:
-    radial-gradient(circle at top, rgba(99, 102, 241, 0.12), transparent 30%),
-    linear-gradient(180deg, #1b1c23 0%, #15161c 100%);
+    radial-gradient(circle at 14% 4%, rgba(201, 138, 74, 0.22), transparent 28%),
+    radial-gradient(circle at 82% 8%, rgba(124, 96, 66, 0.14), transparent 24%),
+    radial-gradient(circle at 52% 100%, rgba(111, 123, 92, 0.08), transparent 30%),
+    linear-gradient(180deg, #241b17 0%, #181311 52%, #110d0b 100%);
   --sidebar-bg:
-    linear-gradient(180deg, rgba(24, 26, 34, 0.98), rgba(20, 21, 28, 0.94)),
-    rgba(255, 255, 255, 0.02);
-  --topbar-bg: rgba(17, 18, 24, 0.9);
-  --topbar-border: rgba(255, 255, 255, 0.08);
-  --theme-toggle-bg: rgba(17, 18, 24, 0.82);
-  --theme-toggle-bg-hover: rgba(30, 32, 42, 0.92);
-  --theme-toggle-border: rgba(255, 255, 255, 0.12);
-  --theme-toggle-icon-bg: rgba(99, 102, 241, 0.16);
-  --sidebar-icon-color: #c7d2fe;
-  --sidebar-icon-bg: rgba(99, 102, 241, 0.14);
-  --sidebar-icon-active-color: #e0e7ff;
-  --sidebar-icon-active-bg: rgba(129, 140, 248, 0.22);
-  --sidebar-create-icon-color: #c7d2fe;
-  --sidebar-create-icon-bg: rgba(99, 102, 241, 0.16);
-  --brand-mark-bg: linear-gradient(180deg, rgba(19, 31, 60, 0.96), rgba(12, 20, 42, 0.92));
-  --brand-mark-border: rgba(96, 165, 250, 0.18);
-  --workshop-bg: #0f0f13;
-  --workshop-border: rgba(255, 255, 255, 0.08);
-  --workshop-panel-bg: rgba(255, 255, 255, 0.03);
-  --workshop-panel-strong-bg: rgba(24, 24, 28, 0.98);
-  --workshop-panel-soft-bg: rgba(255, 255, 255, 0.04);
-  --workshop-hover-bg: rgba(255, 255, 255, 0.06);
-  --workshop-hover-strong-bg: rgba(255, 255, 255, 0.1);
-  --workshop-input-bg: rgba(12, 12, 16, 0.78);
-  --workshop-input-border: rgba(99, 102, 241, 0.42);
-  --workshop-inset-bg: rgba(10, 10, 14, 0.72);
-  --workshop-code-bg: rgba(0, 0, 0, 0.35);
+    radial-gradient(circle at 12% 0%, rgba(201, 138, 74, 0.12), transparent 18%),
+    linear-gradient(180deg, rgba(44, 34, 29, 0.98), rgba(26, 20, 18, 0.96)),
+    rgba(18, 14, 12, 0.9);
+  --topbar-bg: rgba(34, 26, 22, 0.92);
+  --topbar-border: rgba(230, 201, 171, 0.14);
+  --theme-toggle-bg: rgba(29, 22, 19, 0.92);
+  --theme-toggle-bg-hover: rgba(45, 34, 29, 0.96);
+  --theme-toggle-border: rgba(230, 201, 171, 0.14);
+  --theme-toggle-icon-bg: rgba(201, 138, 74, 0.18);
 
-  --text-primary: #f5f5f7;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-contrast: #ffffff;
+  --sidebar-icon-color: #e6be91;
+  --sidebar-icon-bg: rgba(201, 138, 74, 0.16);
+  --sidebar-icon-active-color: #f5cea2;
+  --sidebar-icon-active-bg: rgba(201, 138, 74, 0.24);
+  --sidebar-create-icon-color: #e3c29b;
+  --sidebar-create-icon-bg: rgba(223, 194, 155, 0.1);
+  --brand-mark-bg:
+    linear-gradient(180deg, rgba(58, 44, 36, 0.98), rgba(32, 24, 20, 0.94));
+  --brand-mark-border: rgba(230, 201, 171, 0.18);
 
-  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.25);
-  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --workshop-bg:
+    linear-gradient(180deg, rgba(35, 27, 23, 0.98), rgba(19, 15, 13, 1));
+  --workshop-border: rgba(230, 201, 171, 0.12);
+  --workshop-panel-bg: #45332b;
+  --workshop-panel-strong-bg: #332620;
+  --workshop-panel-soft-bg: rgba(255, 244, 229, 0.06);
+  --workshop-hover-bg: rgba(201, 138, 74, 0.1);
+  --workshop-hover-strong-bg: rgba(201, 138, 74, 0.18);
+  --workshop-input-bg: #382924;
+  --workshop-input-border: rgba(201, 138, 74, 0.26);
+  --workshop-inset-bg: rgba(18, 14, 12, 0.82);
+  --workshop-code-bg: rgba(8, 6, 5, 0.42);
+
+  --text-primary: #f6e9d8;
+  --text-secondary: #ccb7a0;
+  --text-muted: #8e7865;
+  --text-contrast: #fffaf4;
+  --kicker-color: #d7b18a;
+
+  --accent: #c98a4a;
+  --accent-hover: #ddb07a;
+  --accent-soft: rgba(201, 138, 74, 0.18);
+  --accent-strong: #f4d0aa;
+  --accent-glow: rgba(201, 138, 74, 0.24);
+  --support-olive: #9ca686;
+  --support-burgundy: #d1917d;
+
+  --border-soft: rgba(230, 201, 171, 0.12);
+  --border-strong: rgba(230, 201, 171, 0.24);
+  --danger: #dda08c;
+  --danger-bg: rgba(212, 153, 137, 0.14);
+  --danger-border: rgba(212, 153, 137, 0.24);
+
+  --shadow-soft: 0 16px 38px rgba(0, 0, 0, 0.34);
+  --shadow-card: 0 26px 68px rgba(0, 0, 0, 0.44);
+  --shadow-hover: 0 34px 82px rgba(0, 0, 0, 0.5);
+  --shadow-inset: inset 0 1px 0 rgba(255, 246, 235, 0.05);
 }
 
 * {
@@ -139,6 +193,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-y: auto;
+}
+
+body::selection {
+  background: var(--accent-soft);
 }
 
 #app {

@@ -1,61 +1,66 @@
 <template>
   <div class="brief-hub">
-    <header class="brief-hub__hero">
-      <div>
-        <p class="hero-eyebrow">Brief Center</p>
-        <h1 class="hero-title">热点简报中心</h1>
-        <p class="hero-desc">把热点资讯集中在一个入口里，支持打开原文、生成简报和跳转讲解。</p>
+    <header class="hub-hero">
+      <div class="hub-copy">
+        <span class="hub-kicker">BRIEF ARCHIVE</span>
+        <h1 class="hub-title">热榜简报中心</h1>
+        <p class="hub-desc">
+          把今天值得继续阅读的热榜线索收成一排卡片。你可以直接打开原文、切到 AI 简报，或者继续交给
+          OpenMAIC 做讲解。
+        </p>
       </div>
-      <button type="button" class="hero-action" :disabled="loading" @click="fetchItems">
-        {{ loading ? '加载中...' : '刷新热点' }}
+      <button type="button" class="hub-refresh" :disabled="loading" @click="fetchItems">
+        {{ loading ? '正在刷新…' : '刷新热榜' }}
       </button>
     </header>
 
-    <section v-if="error" class="state-card">
+    <section v-if="error" class="hub-state hub-state--error">
+      <span class="hub-kicker">UNAVAILABLE</span>
+      <h2>热榜暂时没有拉取成功</h2>
       <p>{{ error }}</p>
-      <button type="button" class="state-btn" @click="fetchItems">重试</button>
+      <button type="button" class="hub-refresh" @click="fetchItems">重新获取</button>
     </section>
 
-    <section v-else-if="loading" class="state-card">
-      <p>正在整理热点与可用简报入口...</p>
+    <section v-else-if="loading" class="hub-state">
+      <span class="hub-kicker">LOADING BOARD</span>
+      <h2>正在整理今日值得读的线索</h2>
+      <p>稍等片刻，页面会展示适合继续处理的简报入口。</p>
     </section>
 
-    <section v-else class="brief-hub__grid">
+    <section v-else class="hub-grid">
       <article
-        v-for="item in briefs"
+        v-for="(item, index) in briefs"
         :key="item.id"
-        class="brief-card"
+        class="hub-card"
+        :class="{ 'hub-card--feature': index === 0 }"
       >
-        <div class="brief-card__meta">
-          <span class="brief-rank">#{{ item.id }}</span>
-          <span class="brief-domain">{{ item.source || '热点资讯' }}</span>
+        <div class="hub-card__meta">
+          <span class="hub-rank">#{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="hub-source">{{ item.source || 'AI 热榜' }}</span>
         </div>
-        <h2 class="brief-title">{{ item.title }}</h2>
-        <p class="brief-summary">{{ item.summary }}</p>
 
-        <div class="brief-actions">
+        <h2 class="hub-card__title">{{ item.title }}</h2>
+        <p class="hub-card__summary">{{ item.summary }}</p>
+
+        <div class="hub-card__actions">
           <a
             v-if="item.url"
-            class="brief-link"
+            class="card-link"
             :href="item.url"
             target="_blank"
             rel="noreferrer noopener"
           >
-            打开原文
+            原文
           </a>
           <RouterLink
             v-if="item.newsId"
-            class="brief-link brief-link--primary"
+            class="card-link card-link--primary"
             :to="`/brief/${encodeURIComponent(item.newsId)}`"
           >
-            查看简报
+            AI 简报
           </RouterLink>
-          <button
-            type="button"
-            class="brief-link"
-            @click="explainNews(item)"
-          >
-            讲解
+          <button type="button" class="card-link" @click="explainNews(item)">
+            OpenMAIC 讲解
           </button>
         </div>
       </article>
@@ -74,12 +79,12 @@ const error = ref('')
 
 function buildSummary(item, index) {
   const parts = [
-    item?.source || '热点资讯',
+    item?.source || 'AI 热榜',
     item?.tag ? `标签 ${item.tag}` : '',
     `当前排序第 ${index + 1} 位`,
   ].filter(Boolean)
 
-  return `${parts.join(' · ')}。可从这里快速生成简报或跳转到原文。`
+  return `${parts.join(' · ')}。这条线索适合继续生成简报，或直接跳到后续讲解。`
 }
 
 async function fetchItems() {
@@ -98,8 +103,8 @@ async function fetchItems() {
       }))
 
     briefs.value = merged
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
   } finally {
     loading.value = false
   }
@@ -108,7 +113,7 @@ async function fetchItems() {
 function explainNews(item) {
   if (!item?.title) return
   const url = buildOpenMAICDialogPrefillHomeUrl(getOpenMAICAppUrl(), item.title)
-  window.location.href = url
+  window.location.assign(url)
 }
 
 fetchItems()
@@ -116,136 +121,198 @@ fetchItems()
 
 <style scoped>
 .brief-hub {
-  min-height: 100%;
-}
-
-.brief-hub__hero {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 24px;
-  margin-bottom: 24px;
-  padding: 28px;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hub-hero,
+.hub-state {
+  padding: 32px;
+  border-radius: 30px;
+  border: 1px solid var(--border-soft);
   background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    radial-gradient(circle at top right, rgba(196, 106, 45, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(245, 236, 225, 0.92));
+  box-shadow: var(--shadow-card);
 }
 
-.hero-eyebrow {
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
+.hub-state--error {
+  border-color: var(--danger-border);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(249, 235, 232, 0.92)),
+    var(--bg-card);
+}
+
+.hub-hero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.hub-kicker {
+  display: inline-flex;
+  font-family: var(--font-family-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #93c5fd;
+  color: var(--kicker-color);
 }
 
-.hero-title {
-  margin-top: 10px;
-  font-size: 2rem;
-  line-height: 1.2;
+.hub-title {
+  margin-top: 16px;
+  font-family: var(--font-family-display);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
 }
 
-.hero-desc {
-  margin-top: 10px;
-  max-width: 680px;
+.hub-desc,
+.hub-state p {
+  margin-top: 16px;
+  max-width: 56ch;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.9;
 }
 
-.hero-action,
-.state-btn {
-  border: 1px solid rgba(147, 197, 253, 0.22);
-  background: rgba(59, 130, 246, 0.14);
+.hub-state h2 {
+  margin-top: 14px;
+  font-family: var(--font-family-display);
+  font-size: 1.9rem;
+}
+
+.hub-refresh {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  border-radius: 14px;
-  padding: 12px 16px;
+  border-radius: 999px;
+  padding: 12px 18px;
   cursor: pointer;
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+  box-shadow: var(--shadow-inset);
 }
 
-.state-card {
-  padding: 28px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+.hub-refresh:hover {
+  transform: translateY(-1px);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
 }
 
-.brief-hub__grid {
+.hub-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
-.brief-card {
+.hub-card {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-width: 0;
-  padding: 22px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  padding: 24px;
+  border-radius: 26px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 251, 246, 0.9);
   box-shadow: var(--shadow-soft);
 }
 
-.brief-card__meta {
+.hub-card--feature {
+  background:
+    radial-gradient(circle at top right, rgba(196, 106, 45, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(245, 236, 225, 0.94));
+  box-shadow: var(--shadow-card);
+}
+
+.hub-card__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
 }
 
-.brief-rank {
-  color: #93c5fd;
+.hub-rank {
+  color: var(--accent-strong);
   font-weight: 700;
 }
 
-.brief-title {
-  font-size: 1.08rem;
-  line-height: 1.6;
+.hub-card__title {
+  font-family: var(--font-family-display);
+  font-size: 1.34rem;
+  line-height: 1.35;
 }
 
-.brief-summary {
+.hub-card__summary {
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.85;
 }
 
-.brief-actions {
+.hub-card__actions {
   margin-top: auto;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.brief-link {
+.card-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 100px;
-  border-radius: 12px;
+  min-width: 108px;
   padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 252, 247, 0.86);
   color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
-.brief-link--primary {
-  background: rgba(59, 130, 246, 0.18);
-  border-color: rgba(147, 197, 253, 0.26);
+.card-link:hover {
+  transform: translateY(-1px);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
 }
 
-@media (max-width: 900px) {
-  .brief-hub__hero {
+.card-link--primary {
+  background: linear-gradient(180deg, rgba(196, 106, 45, 0.16), rgba(196, 106, 45, 0.08));
+  border-color: rgba(196, 106, 45, 0.28);
+  color: var(--accent-strong);
+}
+
+@media (max-width: 960px) {
+  .hub-hero {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .brief-hub__grid {
+  .hub-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .brief-hub {
+    gap: 18px;
+  }
+
+  .hub-hero,
+  .hub-state,
+  .hub-card {
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .hub-refresh {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

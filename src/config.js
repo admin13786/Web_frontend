@@ -29,6 +29,7 @@ export const OPENMAIC_BASE_URL = import.meta.env.VITE_OPENMAIC_BASE_URL ?? ''
  */
 export const OPENMAIC_APP_URL = import.meta.env.VITE_OPENMAIC_APP_URL ?? ''
 export const EDUREPO_APP_URL = import.meta.env.VITE_EDUREPO_APP_URL ?? ''
+export const MONITOR_APP_URL = import.meta.env.VITE_MONITOR_APP_URL ?? ''
 export const EDUREPO_VIEW_MODE = String(import.meta.env.VITE_EDUREPO_VIEW_MODE ?? 'native')
   .trim()
   .toLowerCase()
@@ -50,6 +51,15 @@ export function getEduRepoAppUrl() {
   // Native mode uses same-origin /api/edu and does not rely on this URL.
   // Keep this fallback for one release cycle to support embed rollback.
   return '/edurepo/'
+}
+
+export function getMonitorAppUrl() {
+  const explicit = String(MONITOR_APP_URL || '').trim().replace(/\/$/, '')
+  if (explicit) return explicit
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:6670`
+  }
+  return 'http://localhost:6670'
 }
 
 export function isEduRepoEmbedMode() {

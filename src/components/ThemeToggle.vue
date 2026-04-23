@@ -37,7 +37,7 @@
         <path d="m19.07 4.93-1.41 1.41" />
       </svg>
     </span>
-    <span class="theme-toggle__label">{{ theme === 'light' ? '深色' : '浅色' }}</span>
+    <span class="theme-toggle__label">{{ theme === 'light' ? '夜色' : '暖光' }}</span>
   </button>
 </template>
 
@@ -65,10 +65,21 @@ const { theme, toggleTheme } = useTheme()
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   cursor: pointer;
+  overflow: hidden;
   transition:
     transform var(--transition-fast),
     background var(--transition-fast),
     border-color var(--transition-fast);
+}
+
+.theme-toggle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 46%),
+    radial-gradient(circle at 18% 20%, rgba(201, 138, 74, 0.12), transparent 28%);
+  pointer-events: none;
 }
 
 .theme-toggle:hover {
@@ -91,6 +102,19 @@ const { theme, toggleTheme } = useTheme()
   font-size: 0.88rem;
   font-weight: 700;
   line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.theme-toggle__icon {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme='dark'] .theme-toggle::after {
+  background:
+    linear-gradient(180deg, rgba(255, 244, 228, 0.05), transparent 44%),
+    radial-gradient(circle at 18% 20%, rgba(201, 138, 74, 0.16), transparent 26%);
 }
 
 @media (max-width: 960px) {
@@ -105,3 +129,4 @@ const { theme, toggleTheme } = useTheme()
   }
 }
 </style>
+

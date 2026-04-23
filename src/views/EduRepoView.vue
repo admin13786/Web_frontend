@@ -32,15 +32,24 @@
     <div v-else class="edurepo-layout">
       <aside class="edurepo-sidebar">
         <div class="edurepo-brand">
-          <div class="edurepo-logo">Edu</div>
+          <div class="edurepo-logo">02</div>
           <div class="edurepo-brand-copy">
-            <div class="edurepo-brand-title">教育仓库</div>
+            <span class="edurepo-brand-kicker">ARCHIVE DESK</span>
+            <div class="edurepo-brand-title">EduRepo 资料馆</div>
             <div class="edurepo-brand-sub">{{ statsText }}</div>
           </div>
         </div>
 
+        <div class="sidebar-note">
+          <span class="panel-kicker">CURATION NOTE</span>
+          <p>把教育类 AI 内容整理成轻档案，方便浏览、拆解和回看。</p>
+        </div>
+
         <div class="panel-block">
-          <div class="panel-title">榜单</div>
+          <div class="panel-head">
+            <span class="panel-kicker">BOARD</span>
+            <div class="panel-title">榜单视角</div>
+          </div>
           <div class="segment-row">
             <button
               v-for="item in boardOptions"
@@ -56,7 +65,10 @@
         </div>
 
         <div class="panel-block">
-          <div class="panel-title">搜索</div>
+          <div class="panel-head">
+            <span class="panel-kicker">SEARCH</span>
+            <div class="panel-title">关键词筛选</div>
+          </div>
           <input
             v-model="searchText"
             class="search-input"
@@ -66,7 +78,7 @@
           />
           <div class="action-row">
             <button type="button" class="action-btn" :disabled="loading" @click="refreshNow">
-              {{ loading ? '加载中…' : '刷新' }}
+              {{ loading ? '加载中…' : '刷新内容' }}
             </button>
             <button
               type="button"
@@ -74,14 +86,17 @@
               :disabled="backfillLoading"
               @click="backfillNow"
             >
-              {{ backfillLoading ? '预生成中…' : '预生成20条' }}
+              {{ backfillLoading ? '预生成中…' : '预生成 20 条' }}
             </button>
           </div>
           <div v-if="backfillError" class="panel-hint panel-hint--error">预生成失败：{{ backfillError }}</div>
         </div>
 
-        <div class="panel-block">
-          <div class="panel-title">筛选强度：{{ minScore.toFixed(1) }}</div>
+        <div class="panel-block panel-block--last">
+          <div class="panel-head">
+            <span class="panel-kicker">INTENSITY</span>
+            <div class="panel-title">筛选强度 {{ minScore.toFixed(1) }}</div>
+          </div>
           <input
             v-model.number="minScore"
             class="range-input"
@@ -95,19 +110,46 @@
       </aside>
 
       <main class="edurepo-main">
+        <header class="edurepo-masthead">
+          <div class="edurepo-masthead__copy">
+            <span class="edurepo-masthead__kicker">LINGJING / ARCHIVE READER</span>
+            <h1 class="edurepo-masthead__title">把 AI 教育内容，整理成一张能翻阅的资料桌。</h1>
+            <p class="edurepo-masthead__desc">
+              左侧是筛选与索引，右侧是今日正在展开的档案页。每张卡片都可以继续打开，进入更适合阅读的正文面。
+            </p>
+          </div>
+
+          <div class="edurepo-masthead__stats">
+            <div
+              v-for="item in overviewStats"
+              :key="item.label"
+              class="masthead-stat"
+            >
+              <span class="masthead-stat__label">{{ item.label }}</span>
+              <strong class="masthead-stat__value">{{ item.value }}</strong>
+            </div>
+          </div>
+        </header>
+
         <div v-if="loadError" class="state-card state-card--error">加载失败：{{ loadError }}</div>
         <div v-else-if="loading && !feedList.length" class="state-card">正在从教育仓库加载内容…</div>
         <div v-else-if="!loading && !feedList.length" class="state-card">
-          数据库暂无可展示内容。先点左侧「预生成20条」，把 Crawl 原文加工入库。
+          数据库暂无可展示内容。先点左侧「预生成 20 条」，把 Crawl 原文加工入库。
         </div>
 
         <section
-          v-for="section in groupedSections"
+          v-for="(section, sectionIndex) in groupedSections"
           :key="section.name"
           class="theme-section"
         >
           <header class="theme-header">
-            <h2 class="theme-title">{{ section.name }}</h2>
+            <div class="theme-header__main">
+              <div class="theme-index">{{ formatSectionIndex(sectionIndex) }}</div>
+              <div>
+                <span class="theme-kicker">DOSSIER</span>
+                <h2 class="theme-title">{{ section.name }}</h2>
+              </div>
+            </div>
             <div class="theme-count">{{ section.items.length }} 条</div>
           </header>
 
@@ -131,15 +173,22 @@
               </div>
 
               <div class="ed-card__body">
+                <div class="ed-card__eyebrow">
+                  <span>{{ item.source || '资料来源' }}</span>
+                  <span>{{ formatTime(item.publishedAt) }}</span>
+                </div>
+
                 <h3
                   class="ed-card__title"
                   v-html="renderInlineHtml(item.hookTitle || item.originalTitle || '', item.keywords, 'hl')"
                 />
+
                 <p
                   v-if="item.summary"
                   class="ed-card__summary"
                   v-html="renderInlineHtml(item.summary, item.keywords, 'kw')"
                 />
+
                 <div class="ed-card__chips">
                   <span
                     v-for="(chip, idx) in (Array.isArray(item.keywords) ? item.keywords : []).slice(0, 3)"
@@ -150,10 +199,9 @@
                     {{ chip }}
                   </span>
                 </div>
-                <div class="ed-card__meta">
-                  <span>{{ item.source || '来源' }}</span>
-                  <span>·</span>
-                  <span>{{ formatTime(item.publishedAt) }}</span>
+
+                <div class="ed-card__foot">
+                  <span class="ed-card__cta">打开档案</span>
                 </div>
               </div>
             </article>
@@ -166,7 +214,7 @@
           class="load-more-btn"
           @click="loadMore"
         >
-          加载更多（{{ limit }} → {{ Math.min(120, limit + 20) }}）
+          继续展开（{{ limit }} → {{ Math.min(120, limit + 20) }}）
         </button>
       </main>
 
@@ -185,7 +233,9 @@
                 :alt="modalData.hookTitle || modalData.originalTitle || 'cover'"
                 @error="handleImageError"
               />
+
               <div class="modal-hero-copy">
+                <span class="modal-overline">ARCHIVE NOTE · {{ formatTime(modalData.publishedAt) }}</span>
                 <h3
                   class="modal-title"
                   v-html="renderInlineHtml(modalData.hookTitle || modalData.originalTitle || '', modalKeywords, 'hl')"
@@ -355,6 +405,15 @@ const canLoadMore = computed(
   () => !loading.value && Array.isArray(feedList.value) && feedList.value.length >= Math.max(6, limit.value - 2),
 )
 
+const overviewStats = computed(() => {
+  const currentBoard = boardOptions.find((item) => item.key === board.value)?.label || '全部'
+  return [
+    { label: '栏目', value: formatCount(groupedSections.value.length) },
+    { label: '卡片', value: formatCount(feedList.value.length) },
+    { label: '视角', value: currentBoard },
+  ]
+})
+
 const modalSections = computed(() => {
   const raw = String(modalData.value?.psMarkdown || '').trim()
   if (!raw) return []
@@ -369,6 +428,16 @@ const modalSections = computed(() => {
 
   return [{ label: '', blocks: parseMarkdownBlocks(raw) }]
 })
+
+function formatCount(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return String(value ?? '')
+  return String(n).padStart(2, '0')
+}
+
+function formatSectionIndex(index) {
+  return String(index + 1).padStart(2, '0')
+}
 
 function clearEmbedTimer() {
   if (typeof window === 'undefined') return
@@ -426,7 +495,7 @@ async function loadStats() {
     const data = await getEduStats({ timeoutMs: 8000 })
     stats.value = data?.stats || null
   } catch {
-    // stats is best-effort
+    // best-effort
   } finally {
     clearStatsTimer()
     if (stats.value?.bgProcessing && typeof window !== 'undefined') {
@@ -545,7 +614,7 @@ function formatTime(raw) {
 
 function deriveTheme(item) {
   const title = String(item?.hookTitle || item?.originalTitle || '').toLowerCase()
-  const keywords = (Array.isArray(item?.keywords) ? item.keywords : []).map((x) => String(x || '').toLowerCase())
+  const keywords = (Array.isArray(item?.keywords) ? item.keywords : []).map((entry) => String(entry || '').toLowerCase())
   const blob = `${title}\n${keywords.join(' ')}`
 
   const has = (...words) => words.some((word) => blob.includes(String(word).toLowerCase()))
@@ -795,11 +864,11 @@ onBeforeUnmount(() => {
 
 .edurepo-shell {
   min-height: calc(100vh - 48px);
-  border-radius: 28px;
+  border-radius: 32px;
   overflow: hidden;
-  border: 1px solid var(--bg-glass-border);
+  border: 1px solid var(--border-soft);
   background: var(--bg-card);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-card), var(--shadow-inset);
 }
 
 .edurepo-frame {
@@ -834,36 +903,38 @@ onBeforeUnmount(() => {
 }
 
 .edurepo-link {
-  border: 1px solid rgba(16, 185, 129, 0.32);
-  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(196, 106, 45, 0.24);
+  background: rgba(255, 245, 231, 0.9);
   color: var(--text-primary);
   padding: 10px 16px;
-  border-radius: 12px;
+  border-radius: 999px;
   text-decoration: none;
   cursor: pointer;
+  font-weight: 700;
 }
 
 .edurepo-link--secondary {
   background: var(--bg-muted);
-  border-color: var(--bg-glass-border);
+  border-color: var(--border-soft);
 }
 
 .edurepo-layout {
   min-height: calc(100vh - 48px);
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 20px;
+  grid-template-columns: 300px 1fr;
+  gap: 22px;
 }
 
 .edurepo-sidebar {
-  border-radius: 22px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-glass);
-  box-shadow: var(--shadow-soft);
-  padding: 14px;
+  border-radius: 30px;
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(244, 235, 223, 0.92));
+  box-shadow: var(--shadow-card), var(--shadow-inset);
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   position: sticky;
   top: 0;
   height: fit-content;
@@ -871,98 +942,174 @@ onBeforeUnmount(() => {
 
 .edurepo-brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--bg-glass-border);
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(124, 98, 74, 0.12);
 }
 
 .edurepo-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  font-family: var(--font-family-display);
+  font-size: 1.06rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #4f46e5, #06b6d4);
+  color: var(--text-contrast);
+  background: linear-gradient(180deg, var(--support-burgundy), #b36b38);
+  box-shadow: 0 16px 28px rgba(141, 70, 55, 0.18);
+}
+
+.edurepo-brand-copy {
+  min-width: 0;
+}
+
+.edurepo-brand-kicker,
+.panel-kicker,
+.theme-kicker,
+.edurepo-masthead__kicker,
+.modal-overline {
+  font-family: var(--font-family-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.edurepo-brand-kicker,
+.panel-kicker,
+.theme-kicker {
+  font-size: 0.64rem;
+  color: var(--kicker-color);
 }
 
 .edurepo-brand-title {
-  font-size: 0.98rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  margin-top: 6px;
+  font-family: var(--font-family-display);
+  font-size: 1.34rem;
+  line-height: 1.04;
 }
 
 .edurepo-brand-sub {
-  margin-top: 2px;
-  font-size: 0.78rem;
+  margin-top: 7px;
+  font-size: 0.8rem;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
-.panel-block {
-  border-bottom: 1px solid var(--bg-glass-border);
-  padding-bottom: 10px;
+.sidebar-note {
+  padding: 15px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(247, 239, 229, 0.9));
+  box-shadow: var(--shadow-inset);
 }
 
-.panel-block:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.sidebar-note p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.75;
+}
+
+.panel-block {
+  padding: 15px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(247, 239, 229, 0.9));
+  box-shadow: var(--shadow-inset);
+}
+
+.panel-block--last {
+  margin-bottom: 0;
+}
+
+.panel-head {
+  margin-bottom: 10px;
 }
 
 .panel-title {
-  font-size: 0.82rem;
+  margin-top: 8px;
+  font-size: 0.96rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 8px;
 }
 
 .segment-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 8px;
 }
 
 .seg-btn {
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-elevated);
+  border: 1px solid rgba(124, 98, 74, 0.14);
+  background: rgba(255, 252, 247, 0.82);
   color: var(--text-secondary);
-  border-radius: 10px;
-  padding: 8px 0;
+  border-radius: 14px;
+  padding: 10px 0;
   cursor: pointer;
+  font-weight: 700;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.seg-btn:hover,
+.seg-btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  outline: none;
 }
 
 .seg-btn--active {
-  background: rgba(99, 102, 241, 0.16);
-  border-color: rgba(99, 102, 241, 0.34);
+  background: linear-gradient(180deg, rgba(255, 246, 233, 0.98), rgba(247, 229, 209, 0.94));
+  border-color: rgba(196, 106, 45, 0.28);
   color: var(--text-primary);
-  font-weight: 700;
 }
 
 .search-input {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--bg-glass-border);
+  border-radius: 16px;
+  border: 1px solid rgba(124, 98, 74, 0.14);
   background: var(--bg-input);
   color: var(--text-primary);
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-inset);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: rgba(196, 106, 45, 0.32);
+  box-shadow: 0 0 0 4px rgba(196, 106, 45, 0.1);
 }
 
 .action-row {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+  margin-top: 10px;
 }
 
 .action-btn {
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.28);
-  background: rgba(99, 102, 241, 0.14);
+  border-radius: 16px;
+  border: 1px solid rgba(196, 106, 45, 0.22);
+  background: rgba(255, 244, 230, 0.88);
   color: var(--text-primary);
-  padding: 10px 12px;
+  padding: 12px 14px;
   cursor: pointer;
+  font-weight: 700;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(196, 106, 45, 0.34);
+  background: rgba(255, 239, 219, 0.96);
 }
 
 .action-btn:disabled {
@@ -971,8 +1118,7 @@ onBeforeUnmount(() => {
 }
 
 .action-btn--soft {
-  border-color: rgba(16, 185, 129, 0.32);
-  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(111, 123, 92, 0.24);
 }
 
 .panel-hint {
@@ -982,79 +1128,182 @@ onBeforeUnmount(() => {
 }
 
 .panel-hint--error {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .range-input {
   width: 100%;
+  accent-color: var(--accent);
 }
 
 .edurepo-main {
   min-width: 0;
-  border-radius: 22px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-soft);
-  padding: 16px;
+  border-radius: 34px;
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.99), rgba(247, 239, 229, 0.92));
+  box-shadow: var(--shadow-card), var(--shadow-inset);
+  padding: 24px;
+}
+
+.edurepo-masthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 22px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(124, 98, 74, 0.14);
+}
+
+.edurepo-masthead__copy {
+  max-width: 56ch;
+}
+
+.edurepo-masthead__kicker {
+  display: inline-flex;
+  font-size: 0.7rem;
+  color: var(--kicker-color);
+}
+
+.edurepo-masthead__title {
+  margin: 12px 0 0;
+  font-family: var(--font-family-display);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  max-width: 12ch;
+}
+
+.edurepo-masthead__desc {
+  margin-top: 16px;
+  color: var(--text-secondary);
+  line-height: 1.85;
+  font-size: 0.96rem;
+}
+
+.edurepo-masthead__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.masthead-stat {
+  min-width: 112px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(247, 239, 229, 0.9));
+  box-shadow: var(--shadow-inset);
+}
+
+.masthead-stat__label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.masthead-stat__value {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-family-display);
+  font-size: 1.2rem;
+  color: var(--text-primary);
 }
 
 .state-card {
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px dashed var(--bg-glass-border);
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px dashed rgba(124, 98, 74, 0.18);
   color: var(--text-secondary);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  background: rgba(255, 252, 247, 0.62);
 }
 
 .state-card--error {
-  border-color: rgba(239, 68, 68, 0.34);
-  color: #ef4444;
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: rgba(255, 245, 243, 0.9);
 }
 
 .theme-section + .theme-section {
-  margin-top: 18px;
+  margin-top: 24px;
 }
 
 .theme-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.theme-header__main {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.theme-index {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family-display);
+  font-size: 1.06rem;
+  color: var(--accent);
+  background: rgba(255, 245, 231, 0.92);
+  border: 1px solid rgba(196, 106, 45, 0.16);
+}
+
+.theme-kicker {
+  display: inline-flex;
+  margin-bottom: 6px;
 }
 
 .theme-title {
-  font-size: 1.08rem;
-  color: var(--text-primary);
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: 1.54rem;
+  line-height: 1.04;
 }
 
 .theme-count {
-  font-size: 0.82rem;
   color: var(--text-secondary);
+  font-size: 0.82rem;
 }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
 }
 
 .ed-card {
-  border-radius: 14px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-elevated);
+  border-radius: 22px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.99), rgba(247, 239, 229, 0.92));
   overflow: hidden;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  box-shadow: var(--shadow-soft), var(--shadow-inset);
 }
 
 .ed-card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-hover), var(--shadow-inset);
+  border-color: var(--border-strong);
 }
 
 .ed-card__cover-wrap {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 16 / 10;
   background: var(--bg-muted);
 }
 
@@ -1076,28 +1325,38 @@ onBeforeUnmount(() => {
 }
 
 .ed-card__body {
-  padding: 10px 11px 11px;
+  padding: 16px;
+}
+
+.ed-card__eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
 }
 
 .ed-card__title {
-  font-size: 1rem;
-  line-height: 1.4;
+  margin-top: 12px;
+  font-size: 1.04rem;
+  line-height: 1.55;
   color: var(--text-primary);
 }
 
 .ed-card__summary {
-  margin-top: 6px;
-  font-size: 0.84rem;
-  line-height: 1.55;
+  margin-top: 10px;
+  font-size: 0.86rem;
+  line-height: 1.7;
   color: var(--text-secondary);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .ed-card__chips {
-  margin-top: 8px;
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1107,47 +1366,49 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 3px 8px;
-  font-size: 0.74rem;
-  font-weight: 600;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: var(--text-primary);
-  background: var(--bg-muted);
+  background: rgba(255, 245, 231, 0.9);
+  border: 1px solid rgba(124, 98, 74, 0.12);
 }
 
 .chip--1 {
-  background: rgba(250, 204, 21, 0.32);
+  background: rgba(196, 106, 45, 0.12);
 }
 
 .chip--2 {
-  background: rgba(56, 189, 248, 0.28);
+  background: rgba(111, 123, 92, 0.14);
 }
 
-.chip--3 {
-  background: rgba(16, 185, 129, 0.24);
-}
-
+.chip--3,
 .chip--soft {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(141, 70, 55, 0.1);
 }
 
-.ed-card__meta {
-  margin-top: 8px;
+.ed-card__foot {
+  margin-top: 14px;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
-  color: var(--text-muted);
+  justify-content: flex-end;
+}
+
+.ed-card__cta {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .load-more-btn {
-  margin-top: 16px;
+  margin-top: 18px;
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px dashed rgba(196, 106, 45, 0.32);
+  background: rgba(255, 249, 240, 0.92);
+  color: var(--accent-strong);
+  padding: 14px 16px;
   cursor: pointer;
+  font-weight: 700;
 }
 
 .modal-mask {
@@ -1155,7 +1416,7 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 35;
   background: var(--bg-overlay);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1163,14 +1424,15 @@ onBeforeUnmount(() => {
 }
 
 .modal-panel {
-  width: min(920px, 100%);
+  width: min(980px, 100%);
   max-height: calc(100vh - 36px);
   overflow: auto;
-  border-radius: 18px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
-  padding: 16px;
+  border-radius: 28px;
+  border: 1px solid var(--border-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.99), rgba(247, 239, 229, 0.94));
+  box-shadow: var(--shadow-hover), var(--shadow-inset);
+  padding: 20px;
   position: relative;
 }
 
@@ -1178,14 +1440,15 @@ onBeforeUnmount(() => {
   position: sticky;
   top: 0;
   margin-left: auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-card);
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  border: 1px solid rgba(124, 98, 74, 0.14);
+  background: rgba(255, 252, 247, 0.92);
   color: var(--text-primary);
   cursor: pointer;
   z-index: 2;
+  box-shadow: var(--shadow-inset);
 }
 
 .modal-state {
@@ -1195,70 +1458,83 @@ onBeforeUnmount(() => {
 }
 
 .modal-state--error {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .modal-hero {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 14px;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+  align-items: start;
+  margin-top: 8px;
 }
 
 .modal-cover {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--bg-glass-border);
-  aspect-ratio: 3 / 4;
+  border-radius: 20px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  aspect-ratio: 4 / 5;
   object-fit: cover;
 }
 
+.modal-overline {
+  display: inline-flex;
+  font-size: 0.66rem;
+  color: var(--kicker-color);
+}
+
 .modal-title {
-  font-size: 1.3rem;
-  line-height: 1.45;
+  margin-top: 12px;
+  font-family: var(--font-family-display);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1.08;
   color: var(--text-primary);
 }
 
 .modal-chips {
-  margin-top: 9px;
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .modal-summary {
-  margin-top: 10px;
+  margin-top: 14px;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.8;
 }
 
 .ps-wrapper {
-  margin-top: 14px;
+  margin-top: 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-.ps-block {
-  border-radius: 12px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-card);
-  padding: 12px;
+.ps-block,
+.glossary {
+  border-radius: 22px;
+  border: 1px solid rgba(124, 98, 74, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(247, 239, 229, 0.88));
+  padding: 16px;
 }
 
 .ps-label {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 4px 9px;
-  font-size: 0.76rem;
-  color: var(--text-primary);
-  background: rgba(99, 102, 241, 0.16);
-  margin-bottom: 8px;
+  padding: 5px 10px;
+  font-size: 0.74rem;
+  color: var(--accent-strong);
+  background: rgba(255, 245, 231, 0.92);
+  border: 1px solid rgba(196, 106, 45, 0.16);
+  margin-bottom: 10px;
 }
 
 .md-renderer {
   color: var(--text-secondary);
-  line-height: 1.75;
+  line-height: 1.82;
 }
 
 .md-renderer :deep(strong) {
@@ -1272,13 +1548,13 @@ onBeforeUnmount(() => {
 }
 
 .md-h2 {
-  margin-bottom: 8px;
-  font-size: 1.06rem;
+  margin-bottom: 10px;
+  font-size: 1.12rem;
 }
 
 .md-h3 {
   margin-bottom: 8px;
-  font-size: 0.98rem;
+  font-size: 1rem;
 }
 
 .md-p + .md-p,
@@ -1299,39 +1575,33 @@ onBeforeUnmount(() => {
 }
 
 .md-quote {
-  border-left: 3px solid rgba(99, 102, 241, 0.35);
-  background: rgba(99, 102, 241, 0.08);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-left: 3px solid rgba(196, 106, 45, 0.32);
+  background: rgba(255, 245, 231, 0.9);
+  border-radius: 14px;
+  padding: 10px 12px;
 }
 
 .hl {
-  background: rgba(250, 204, 21, 0.35);
+  background: rgba(196, 106, 45, 0.18);
   border-radius: 4px;
   padding: 0 2px;
 }
 
 .kw {
-  background: rgba(56, 189, 248, 0.2);
+  background: rgba(111, 123, 92, 0.16);
   border-radius: 4px;
   padding: 0 2px;
 }
 
-.glossary {
-  margin-top: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--bg-glass-border);
-  background: var(--bg-card);
-  padding: 12px;
-}
-
 .glossary-title {
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  font-family: var(--font-family-display);
+  font-size: 1.1rem;
 }
 
 .glossary-item + .glossary-item {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .glossary-term {
@@ -1341,18 +1611,19 @@ onBeforeUnmount(() => {
 
 .glossary-explain {
   color: var(--text-secondary);
-  margin-top: 3px;
+  margin-top: 4px;
+  line-height: 1.7;
 }
 
 .origin-link {
-  margin-top: 12px;
+  margin-top: 14px;
   display: inline-flex;
   color: var(--accent);
   text-decoration: none;
   font-weight: 700;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1180px) {
   .edurepo-layout {
     grid-template-columns: 1fr;
   }
@@ -1363,22 +1634,48 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
+  .edurepo-main {
+    padding: 18px;
+    border-radius: 28px;
+  }
+
+  .edurepo-masthead {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .edurepo-masthead__stats {
+    justify-content: flex-start;
+  }
+
   .modal-hero {
     grid-template-columns: 1fr;
   }
 
   .modal-cover {
-    max-width: 260px;
+    max-width: 320px;
   }
 }
 
 @media (max-width: 720px) {
   .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .edurepo-sidebar,
+  .edurepo-main,
+  .edurepo-shell,
+  .modal-panel {
+    border-radius: 24px;
   }
 
   .edurepo-main {
-    padding: 12px;
+    padding: 16px;
+  }
+
+  .theme-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

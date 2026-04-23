@@ -8,6 +8,7 @@ export const DEFAULT_USER = {
   username: 'workshop_guest',
   displayName: '默认用户',
   password: '123456',
+  role: 'user',
 }
 
 function emitAuthChanged() {
@@ -24,26 +25,56 @@ function safeJsonParse(raw, fallback = null) {
   }
 }
 
+export function normalizeUserRole(userOrRole, fallbackUsername = '') {
+  const roleValue =
+    typeof userOrRole === 'string'
+      ? userOrRole
+      : userOrRole?.role || userOrRole?.user?.role || ''
+  const usernameValue =
+    typeof userOrRole === 'string'
+      ? fallbackUsername
+      : userOrRole?.username || userOrRole?.user?.username || fallbackUsername
+  const normalizedRole = String(roleValue || '').trim().toLowerCase()
+  if (normalizedRole === 'admin') return 'admin'
+  if (String(usernameValue || '').trim().toLowerCase() === 'admin') return 'admin'
+  return 'user'
+}
+
+export function isAdminUser(user) {
+  return normalizeUserRole(user) === 'admin'
+}
+
 export function getCurrentUser() {
   if (typeof window === 'undefined') return null
   const session = safeJsonParse(localStorage.getItem(AUTH_SESSION_KEY), null)
   if (!session?.username || !session?.token) return null
-  return session
+
+  const role = normalizeUserRole(session)
+  return {
+    ...session,
+    role,
+    isAdmin: role === 'admin',
+  }
 }
 
 export function saveCurrentUser(user) {
   if (typeof window === 'undefined') return null
+  const role = normalizeUserRole(user)
   const session = {
     username: String(user?.username || '').trim(),
     displayName: String(user?.displayName || user?.username || '').trim(),
     token: String(user?.token || '').trim(),
+    role,
+    isAdmin: role === 'admin',
     loggedInAt: user?.loggedInAt || new Date().toISOString(),
   }
   if (!session.username || !session.token) return null
+
   localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
   localStorage.setItem('isLoggedIn', 'true')
   localStorage.setItem('token', session.token)
   localStorage.setItem('username', session.username)
+  localStorage.setItem('userRole', session.role)
   clearGuestSessionState()
   emitAuthChanged()
   return session
@@ -55,29 +86,23 @@ export function clearCurrentUser() {
   localStorage.removeItem('isLoggedIn')
   localStorage.removeItem('token')
   localStorage.removeItem('username')
+  localStorage.removeItem('userRole')
+  localStorage.removeItem(DEFAULT_BOOTSTRAP_KEY)
   clearGuestSessionState()
   emitAuthChanged()
 }
 
 export function bootstrapDefaultUser() {
-  if (typeof window === 'undefined') return null
-  const current = getCurrentUser()
-  if (current) return current
-
-  const bootstrapped = localStorage.getItem(DEFAULT_BOOTSTRAP_KEY) === 'true'
-  if (bootstrapped) return null
-
-  localStorage.setItem(DEFAULT_BOOTSTRAP_KEY, 'true')
-  return saveCurrentUser({
-    username: DEFAULT_USER.username,
-    displayName: DEFAULT_USER.displayName,
-    token: `default_${Date.now()}`,
-  })
+  return getCurrentUser()
 }
 
 export function getUserDisplayName(user) {
   if (!user) return ''
   return user.displayName || user.username || ''
+}
+
+export function getDefaultRouteForUser(user) {
+  return isAdminUser(user) ? '/admin/monitor' : '/home'
 }
 
 export function getAuthChangedEventName() {
