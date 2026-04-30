@@ -3,7 +3,9 @@
     <div class="openmaic-shell">
       <div v-if="loadState === 'error'" class="openmaic-fallback">
         <h2>当前页面无法稳定内嵌</h2>
-        <p>可能是 OpenMAIC 的安全策略禁止 iframe，或者当前会话跳转到了外部页面。</p>
+        <p>
+          请确认 OpenMAIC 已在 3000 端口运行，或设置 VITE_OPENMAIC_APP_URL 指向实际地址。
+        </p>
         <div class="openmaic-actions">
           <a
             class="openmaic-link"
@@ -42,6 +44,9 @@ const { theme } = useTheme()
 const iframeEl = ref(null)
 const frameKey = ref(0)
 const loadState = ref('loading')
+let loadTimer = 0
+
+const LOAD_TIMEOUT_MS = 8000
 
 const embedUrl = computed(() => {
   try {
@@ -63,9 +68,25 @@ const targetOrigin = computed(() => {
   }
 })
 
+function clearLoadTimeout() {
+  if (!loadTimer) return
+  window.clearTimeout(loadTimer)
+  loadTimer = 0
+}
+
+function startLoadTimeout() {
+  clearLoadTimeout()
+  loadTimer = window.setTimeout(() => {
+    if (loadState.value === 'loading') {
+      loadState.value = 'error'
+    }
+  }, LOAD_TIMEOUT_MS)
+}
+
 function reloadFrame() {
   loadState.value = 'loading'
   frameKey.value += 1
+  startLoadTimeout()
 }
 
 function syncIframeTheme() {
@@ -80,23 +101,21 @@ function syncIframeTheme() {
 
 function handleLoad() {
   loadState.value = 'ready'
+  clearLoadTimeout()
   syncIframeTheme()
 }
 
 watch(theme, () => {
   loadState.value = 'loading'
   frameKey.value += 1
+  startLoadTimeout()
   syncIframeTheme()
 })
 
-const loadTimeout = window.setTimeout(() => {
-  if (loadState.value === 'loading') {
-    loadState.value = 'error'
-  }
-}, 5000)
+startLoadTimeout()
 
 onBeforeUnmount(() => {
-  window.clearTimeout(loadTimeout)
+  clearLoadTimeout()
 })
 </script>
 

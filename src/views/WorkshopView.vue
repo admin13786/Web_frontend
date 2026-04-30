@@ -2189,6 +2189,27 @@ function applyEnsuredSessionToConversation(targetConversationId, mapping) {
   void persistConversationRecordById(normalizedConversationId)
 }
 
+function clearConversationSessionSnapshot(targetConversationId) {
+  const normalizedConversationId = String(targetConversationId || '').trim()
+  if (!normalizedConversationId) return
+  updateConversationById(normalizedConversationId, (item) => normalizeConversationRecord({
+    ...item,
+    preview: {
+      ...(item.preview || {}),
+      agentDoSessionId: '',
+      workspacePath: '',
+    },
+    updatedAt: new Date().toISOString(),
+  }))
+  if (isCurrentConversation(normalizedConversationId)) {
+    agentDoDebug.value.sessionId = ''
+    agentDoDebug.value.workspacePath = ''
+    schedulePersist()
+    return
+  }
+  void persistConversationRecordById(normalizedConversationId)
+}
+
 async function uploadPendingConversationAttachments(options = {}) {
   const targetConversationId = String(options.conversationId || currentConversationId.value || '').trim()
   const request = buildWorkspaceRequest(targetConversationId)
@@ -3201,13 +3222,6 @@ function routeRequestsNewConversation() {
   return String(route.query.new || '').trim() === '1'
 }
 
-function filterConversationsByMode(list, mode = currentFunctionMode.value) {
-  const normalizedMode = normalizeFunctionMode(mode)
-  return (Array.isArray(list) ? list : []).filter((item) => (
-    normalizeFunctionMode(item?.conversationMode) === normalizedMode
-  ))
-}
-
 function emitWorkshopHistoryChanged() {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('workshop-history-changed'))
@@ -3269,13 +3283,32 @@ async function restoreConversationSessionMapping(conversation) {
   const recovery = getConversationPreviewRecovery(conversation)
   if (!conversation?.id || !recovery?.agentDoSessionId) return null
   try {
-    return await restoreAgentDoSessionMapping({
+    const restored = await restoreAgentDoSessionMapping({
       username,
       conversationId: conversation.id,
       agentDoSessionId: recovery.agentDoSessionId,
       workspacePath: recovery.workspacePath || '',
     })
+    if (restored?.restored === false) {
+      clearConversationSessionSnapshot(conversation.id)
+      return {
+        ...restored,
+        missing: true,
+        agentDoSessionId: '',
+        workspacePath: '',
+      }
+    }
+    return restored
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('Agent-Do session not found') || message.includes('HTTP 404')) {
+      clearConversationSessionSnapshot(conversation.id)
+      return {
+        missing: true,
+        agentDoSessionId: '',
+        workspacePath: '',
+      }
+    }
     console.warn('restore Agent-Do session mapping failed:', error)
     return null
   }
@@ -3292,7 +3325,6 @@ async function applyConversation(conversation) {
   historyHydrating = true
   currentConversationId.value = normalizedConversation.id
   syncConversationPageById(normalizedConversation.id)
-  syncConversationRoute(normalizedConversation.id)
   chatTitle.value = normalizedConversation.title || '新对话'
   messages.value = cloneMessages(normalizedConversation.messages || [])
   selectedSkillMetas.value = normalizeSkillMetaList(normalizedConversation.selectedSkills)
@@ -3314,7 +3346,15 @@ async function applyConversation(conversation) {
   resetWorkspaceBrowser()
   urlLoadError.value = false
   const restoredMapping = await restoreConversationSessionMapping(normalizedConversation)
+  if (restoredMapping?.missing) {
+    normalizedConversation.preview = {
+      ...(normalizedConversation.preview || {}),
+      agentDoSessionId: '',
+      workspacePath: '',
+    }
+  }
   if (applySeq !== conversationApplySeq || !isCurrentConversation(normalizedConversation.id)) return
+  syncConversationRoute(normalizedConversation.id)
   const restoredWorkspacePath = restoredMapping?.workspacePath || normalizedConversation.preview?.workspacePath || ''
   agentDoDebug.value.sessionId = restoredMapping?.agentDoSessionId || normalizedConversation.preview?.agentDoSessionId || ''
   agentDoDebug.value.workspacePath = restoredWorkspacePath
@@ -3445,10 +3485,11 @@ async function flushPendingPersist() {
 }
 
 async function createNewConversation(options = {}) {
-  const { startRename: shouldStartRename = true } = options
+  const { startRename: shouldStartRename = true, forceNew = false } = options
   await flushPendingPersist()
   const currentConversation = conversationList.value.find((item) => item.id === currentConversationId.value)
-  if (isUnsavedEmptyDraftConversation(currentConversation)) {
+  const currentConversationMode = normalizeFunctionMode(currentConversation?.conversationMode)
+  if (!forceNew && currentConversationMode === currentFunctionMode.value && isUnsavedEmptyDraftConversation(currentConversation)) {
     syncConversationPageById(currentConversation.id)
     await applyConversation(currentConversation)
     await waitForConversationApply()
@@ -3479,10 +3520,10 @@ async function handleExternalCreateConversation(event) {
   if (!historyReady.value || busy.value) return
   const requestedMode = normalizeFunctionMode(event?.detail?.mode || getRouteFunctionMode(route))
   if (requestedMode !== currentFunctionMode.value) {
-    await router.push({ path: getPathForFunctionMode(requestedMode), query: { new: '1' } })
+    await router.push({ path: getPathForFunctionMode(requestedMode), query: { new: '1', t: String(Date.now()) } })
     return
   }
-  await createNewConversation({ startRename: false })
+  await createNewConversation({ startRename: false, forceNew: Boolean(event?.detail?.forceNew) })
 }
 
 async function handleExternalConversationDeleted(event) {
@@ -3569,10 +3610,10 @@ async function loadWorkshopHistory() {
   const normalizedConversations = Array.isArray(conversations)
     ? conversations.map((item) => normalizeConversationRecord(item))
     : []
-  conversationList.value = filterConversationsByMode(normalizedConversations)
+  conversationList.value = normalizedConversations
   const routeConversationId = String(route.query.cid || '').trim()
   const wantsNewConversation = routeRequestsNewConversation()
-  let current = routeConversationId
+  let current = !wantsNewConversation && routeConversationId
     ? conversationList.value.find((item) => item.id === routeConversationId)
     : null
   if (routeConversationId && !current) {
@@ -3587,7 +3628,7 @@ async function loadWorkshopHistory() {
   }
   if (!current && wantsNewConversation) {
     historyReady.value = true
-    await createNewConversation({ startRename: false })
+    await createNewConversation({ startRename: false, forceNew: true })
     emitWorkshopHistoryChanged()
     return
   }
@@ -5084,6 +5125,11 @@ watch(
     if (!discardedDraft) {
       await flushPendingPersist()
     }
+    const browserCid = typeof window !== 'undefined'
+      ? String(new URLSearchParams(window.location.search).get('cid') || '').trim()
+      : String(route.query.cid || '').trim()
+    if (browserCid !== nextId) return
+    if (String(route.query.cid || '').trim() !== nextId || routeRequestsNewConversation()) return
     await applyConversation(conversation)
   },
 )
@@ -5103,18 +5149,10 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => route.query.new,
-  async (flag) => {
+  () => [route.query.new, route.query.t],
+  async ([flag]) => {
     if (String(flag || '').trim() !== '1' || !historyReady.value) return
-    await handleExternalCreateConversation()
-  },
-)
-
-watch(
-  () => currentFunctionMode.value,
-  async (mode, previousMode) => {
-    if (!historyReady.value || mode === previousMode) return
-    await loadWorkshopHistory()
+    await handleExternalCreateConversation({ detail: { forceNew: true } })
   },
 )
 

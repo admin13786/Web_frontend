@@ -22,6 +22,7 @@ export const USE_RANK_WEIBO_MOCK = import.meta.env.VITE_RANK_WEIBO_MOCK === 'tru
 // GET  {OPENMAIC_BASE_URL}/api/generate-classroom/:jobId
 // 例如：http://localhost:3000 ；经 Vite 代理时可填 /openmaic
 export const OPENMAIC_BASE_URL = import.meta.env.VITE_OPENMAIC_BASE_URL ?? ''
+export const OPENMAIC_PORT = String(import.meta.env.VITE_OPENMAIC_PORT || '3000').trim()
 
 /**
  * 浏览器整页跳转到 OpenMAIC（Next）时的根地址。
@@ -30,6 +31,9 @@ export const OPENMAIC_BASE_URL = import.meta.env.VITE_OPENMAIC_BASE_URL ?? ''
 export const OPENMAIC_APP_URL = import.meta.env.VITE_OPENMAIC_APP_URL ?? ''
 export const EDUREPO_APP_URL = import.meta.env.VITE_EDUREPO_APP_URL ?? ''
 export const MONITOR_APP_URL = import.meta.env.VITE_MONITOR_APP_URL ?? ''
+export const ANDROID_APK_URL = String(
+  import.meta.env.VITE_ANDROID_APK_URL ?? '/downloads/lingjing-android-latest.apk',
+).trim()
 export const EDUREPO_VIEW_MODE = String(import.meta.env.VITE_EDUREPO_VIEW_MODE ?? 'native')
   .trim()
   .toLowerCase()
@@ -40,9 +44,9 @@ export function getOpenMAICAppUrl() {
   const base = String(OPENMAIC_BASE_URL || '').trim()
   if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:3000`
+    return `${window.location.protocol}//${window.location.hostname}:${OPENMAIC_PORT || '3000'}`
   }
-  return 'http://localhost:3000'
+  return `http://localhost:${OPENMAIC_PORT || '3000'}`
 }
 
 export function getEduRepoAppUrl() {

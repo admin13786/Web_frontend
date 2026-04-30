@@ -1,4 +1,6 @@
 .DS_Store
+Thumbs.db
+*:Zone.Identifier
 
 # Logs
 logs
@@ -14,15 +16,30 @@ pnpm-debug.log*
 
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Build output
 dist/
+build/
+coverage/
+.vite/
+.cache/
 
 # Environment files
 .env
 .env.*
+*.env
+*.local
 !.env.example
-*:Zone.Identifier
+!.env.*.example
+
+# Local deploy artifacts
+public/downloads/*.apk
+public/downloads/*.ipa
+*.zip
+*.tar
+*.tar.gz
+*.7z
 
 # Local verification / debug artifacts
 tmp/

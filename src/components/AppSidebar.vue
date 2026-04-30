@@ -332,9 +332,7 @@ const authActionLabel = computed(() => (isAuthenticated.value ? '退出登录' :
 const brandLogoSrc = computed(() => '/branding/cognimatrix-logo-cutout.png')
 const currentFunctionMode = computed(() => getRouteFunctionMode(route))
 const isSkillAssistantMode = computed(() => currentFunctionMode.value === FUNCTION_MODE.SKILL_ASSISTANT)
-const filteredConversations = computed(() => conversations.value.filter((item) => (
-  normalizeFunctionMode(item?.conversationMode || currentFunctionMode.value) === currentFunctionMode.value
-)))
+const filteredConversations = computed(() => conversations.value)
 const activeConversationId = computed(() => String(route.query.cid || ''))
 const selectedZipFileName = computed(() => String(selectedZipFile.value?.name || '').trim())
 const browserZipUploadDisabled = computed(() => skillSaving.value || !selectedZipFile.value)
@@ -392,12 +390,12 @@ async function handleNavItemClick(item) {
 
   if (route.path === targetPath) {
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(WORKSHOP_CREATE_CONVERSATION_EVENT, { detail: { mode: targetMode } }))
+      window.dispatchEvent(new CustomEvent(WORKSHOP_CREATE_CONVERSATION_EVENT, { detail: { mode: targetMode, forceNew: true } }))
     }
     return
   }
 
-  await router.push({ path: targetPath, query: { new: '1' } })
+  await router.push({ path: targetPath, query: { new: '1', t: String(Date.now()) } })
 }
 
 function formatTokenCount(value) {
@@ -859,7 +857,7 @@ async function loadWorkshopHistory() {
     conversations.value = Array.isArray(items)
       ? items.map((item) => ({
           ...item,
-          conversationMode: normalizeFunctionMode(item?.conversationMode || currentFunctionMode.value),
+          conversationMode: normalizeFunctionMode(item?.conversationMode),
         }))
       : []
     await Promise.all([
@@ -887,7 +885,7 @@ async function goToWelcomePage() {
     window.dispatchEvent(new CustomEvent(WORKSHOP_CREATE_CONVERSATION_EVENT, { detail: { mode } }))
     return
   }
-  await router.push({ path: getPathForFunctionMode(mode), query: { new: '1' } })
+  await router.push({ path: getPathForFunctionMode(mode), query: { new: '1', t: String(Date.now()) } })
 }
 
 function requestRemoveConversation(id) {

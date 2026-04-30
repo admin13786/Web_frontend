@@ -31,6 +31,21 @@ function toAbsoluteApiUrl(pathname) {
   return `${getApiOrigin()}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
 }
 
+function getApiTargetOrigin() {
+  if (API_BASE.startsWith('http')) {
+    try {
+      return new URL(API_BASE).origin
+    } catch {
+      return getApiOrigin()
+    }
+  }
+  return getApiOrigin()
+}
+
+function buildPreviewUrl(pathname, search = '', hash = '') {
+  return `${getApiTargetOrigin()}${pathname}${search}${hash}`
+}
+
 async function workshopJsonRequest(path, options = {}) {
   const response = await fetch(API_BASE + path, {
     ...options,
@@ -67,10 +82,10 @@ export function normalizeWorkshopPreviewUrl(url) {
     const parsed = new URL(url, getApiOrigin() || 'http://localhost')
     if (parsed.pathname.startsWith('/agent-do/preview/')) {
       parsed.pathname = `${apiBasePath}${parsed.pathname}`
-      return parsed.toString()
+      return buildPreviewUrl(parsed.pathname, parsed.search, parsed.hash)
     }
     if (parsed.pathname.startsWith(previewPrefix)) {
-      return parsed.toString()
+      return buildPreviewUrl(parsed.pathname, parsed.search, parsed.hash)
     }
     if (!/^https?:/i.test(url) && url.startsWith(previewPrefix)) {
       return toAbsoluteApiUrl(url)
