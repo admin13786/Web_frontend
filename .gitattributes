@@ -1,3 +1,13 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.apk binary
+
 *.sh text eol=lf
 Dockerfile text eol=lf
 *.conf text eol=lf

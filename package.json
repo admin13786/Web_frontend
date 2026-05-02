@@ -2,6 +2,7 @@
   "name": "vue-dashboard-app",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build && npm run verify:edurepo-build",
