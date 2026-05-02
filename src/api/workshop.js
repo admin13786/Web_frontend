@@ -191,7 +191,18 @@ async function* parseJsonSseStream(response) {
   }
 
   while (true) {
-    const { done, value } = await reader.read()
+    let chunk
+    try {
+      chunk = await reader.read()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        message && !/network error/i.test(message)
+          ? `流式连接中断：${message}`
+          : '流式连接中断，后端可能在处理中途异常退出',
+      )
+    }
+    const { done, value } = chunk
     if (value) buffer += decoder.decode(value, { stream: true })
 
     if (done) {
