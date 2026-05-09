@@ -42,11 +42,23 @@ export function getOpenMAICAppUrl() {
   const explicit = String(OPENMAIC_APP_URL || '').trim().replace(/\/$/, '')
   if (explicit) return explicit
   const base = String(OPENMAIC_BASE_URL || '').trim()
-  if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
+  if (base) {
+    if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
+    if (base.startsWith('/')) return base.replace(/\/$/, '')
+  }
   if (typeof window !== 'undefined') {
     return `${window.location.protocol}//${window.location.hostname}:${OPENMAIC_PORT || '3000'}`
   }
   return `http://localhost:${OPENMAIC_PORT || '3000'}`
+}
+
+export function getOpenMAICEmbedUrl() {
+  const base = String(OPENMAIC_BASE_URL || '').trim()
+  if (base) {
+    if (/^https?:\/\//i.test(base)) return base.replace(/\/$/, '')
+    if (base.startsWith('/')) return base.replace(/\/$/, '')
+  }
+  return getOpenMAICAppUrl()
 }
 
 export function getEduRepoAppUrl() {

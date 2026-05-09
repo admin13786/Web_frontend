@@ -167,7 +167,7 @@
                   :src="coverOf(item)"
                   :alt="item.hookTitle || item.originalTitle || 'EduRepo Cover'"
                   loading="lazy"
-                  @error="handleImageError"
+                  @error="handleImageError($event, item)"
                 />
                 <div v-else class="ed-card__cover-placeholder">暂无封面</div>
               </div>
@@ -231,7 +231,7 @@
                 class="modal-cover"
                 :src="coverOf(modalData)"
                 :alt="modalData.hookTitle || modalData.originalTitle || 'cover'"
-                @error="handleImageError"
+                @error="handleImageError($event, modalData)"
               />
 
               <div class="modal-hero-copy">
@@ -594,13 +594,17 @@ function closeDetail() {
 }
 
 function coverOf(item) {
-  const url = String(item?.coverUrl || item?.externalCoverUrl || '').trim()
-  if (!url) return ''
-  return url
+  return String(item?.externalCoverUrl || item?.coverUrl || item?.generatedCoverUrl || '').trim()
 }
 
-function handleImageError(event) {
+function handleImageError(event, item = null) {
   if (!event?.target) return
+  const generatedCover = String(item?.generatedCoverUrl || '').trim()
+  if (generatedCover && event.target.dataset.generatedFallbackApplied !== '1') {
+    event.target.dataset.generatedFallbackApplied = '1'
+    event.target.src = generatedCover
+    return
+  }
   if (event.target.dataset.fallbackApplied === '1') return
   event.target.dataset.fallbackApplied = '1'
   event.target.src = FALLBACK_COVER

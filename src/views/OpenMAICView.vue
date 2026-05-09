@@ -37,9 +37,10 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
-import { getOpenMAICAppUrl } from '../config.js'
+import { getOpenMAICAppUrl, getOpenMAICEmbedUrl } from '../config.js'
 
 const openmaicUrl = getOpenMAICAppUrl()
+const openmaicEmbedUrl = getOpenMAICEmbedUrl()
 const { theme } = useTheme()
 const iframeEl = ref(null)
 const frameKey = ref(0)
@@ -50,19 +51,19 @@ const LOAD_TIMEOUT_MS = 8000
 
 const embedUrl = computed(() => {
   try {
-    const url = new URL(openmaicUrl, window.location.href)
+    const url = new URL(openmaicEmbedUrl, window.location.href)
     url.searchParams.set('theme', theme.value)
     url.searchParams.set('appearance', theme.value)
     url.searchParams.set('hostTheme', theme.value)
     return url.toString()
   } catch {
-    return openmaicUrl
+    return openmaicEmbedUrl
   }
 })
 
 const targetOrigin = computed(() => {
   try {
-    return new URL(openmaicUrl, window.location.href).origin
+    return new URL(openmaicEmbedUrl, window.location.href).origin
   } catch {
     return '*'
   }
