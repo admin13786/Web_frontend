@@ -25,6 +25,9 @@ jobs:
       BACKEND_DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Validate secrets
         run: |
           test -n "$SSH_HOST"
@@ -38,44 +41,28 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
+      - name: Upload frontend source
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='*.env' \
+            --exclude='dist' \
+            --exclude='build' \
+            --exclude='node_modules' \
+            --exclude='.pnpm-store' \
+            --exclude='coverage' \
+            -czf - . | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+              "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -c 'set -eu; FRONTEND_DEPLOY_PATH=\"\${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}\"; mkdir -p \"\$FRONTEND_DEPLOY_PATH\"; tar -xzf - -C \"\$FRONTEND_DEPLOY_PATH\"'"
+
       - name: Deploy frontend
         run: |
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
             "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' bash -s" <<'REMOTE'
           set -euo pipefail
 
-          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-}"
-          if [ -z "$FRONTEND_DEPLOY_PATH" ]; then
-            for candidate in /data/projects/Web_Frontend /data/projects/Web_frontend "$HOME/Web_Frontend" "$HOME/Web_frontend"; do
-              if [ -d "$candidate/.git" ]; then
-                FRONTEND_DEPLOY_PATH="$candidate"
-                break
-              fi
-            done
-          fi
-          if [ -z "$FRONTEND_DEPLOY_PATH" ]; then
-            echo "Frontend deploy path not found. Set FRONTEND_DEPLOY_PATH secret or clone Web_Frontend to /data/projects/Web_Frontend."
-            exit 1
-          fi
-
-          BACKEND_DEPLOY_PATH="${BACKEND_DEPLOY_PATH:-}"
-          if [ -z "$BACKEND_DEPLOY_PATH" ]; then
-            for candidate in /data/projects/Backend/deploy "$HOME/Backend/deploy"; do
-              if [ -d "$candidate" ]; then
-                BACKEND_DEPLOY_PATH="$candidate"
-                break
-              fi
-            done
-          fi
-          if [ -z "$BACKEND_DEPLOY_PATH" ]; then
-            echo "Backend deploy path not found. Set BACKEND_DEPLOY_PATH secret or clone Backend to /data/projects/Backend."
-            exit 1
-          fi
-
-          cd "$FRONTEND_DEPLOY_PATH"
-          git fetch origin main
-          git pull --ff-only origin main
-
+          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
+          BACKEND_DEPLOY_PATH="${BACKEND_DEPLOY_PATH:-/data/projects/Backend/deploy}"
           cd "$BACKEND_DEPLOY_PATH"
           WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" docker compose up -d --build --force-recreate web-frontend
           docker compose ps web-frontend
