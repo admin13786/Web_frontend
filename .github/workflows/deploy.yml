@@ -69,6 +69,7 @@ jobs:
             source ./.env
             set +a
           fi
-          WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" docker compose up -d --build --force-recreate web-frontend
+          chmod +x ./up.sh
+          WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" ./up.sh --force-recreate web-frontend
           docker compose ps web-frontend
           REMOTE
