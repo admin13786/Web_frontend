@@ -64,6 +64,11 @@ jobs:
           FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
           BACKEND_DEPLOY_PATH="${BACKEND_DEPLOY_PATH:-/data/projects/Backend/deploy}"
           cd "$BACKEND_DEPLOY_PATH"
+          if [ -f ./.env ]; then
+            set -a
+            source ./.env
+            set +a
+          fi
           WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" docker compose up -d --build --force-recreate web-frontend
           docker compose ps web-frontend
           REMOTE
