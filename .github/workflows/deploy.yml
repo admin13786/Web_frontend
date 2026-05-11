@@ -41,8 +41,36 @@ jobs:
       - name: Deploy frontend
         run: |
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH:-$HOME/Web_Frontend}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH:-$HOME/Backend/deploy}' bash -s" <<'REMOTE'
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' bash -s" <<'REMOTE'
           set -euo pipefail
+
+          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-}"
+          if [ -z "$FRONTEND_DEPLOY_PATH" ]; then
+            for candidate in /data/projects/Web_Frontend /data/projects/Web_frontend "$HOME/Web_Frontend" "$HOME/Web_frontend"; do
+              if [ -d "$candidate/.git" ]; then
+                FRONTEND_DEPLOY_PATH="$candidate"
+                break
+              fi
+            done
+          fi
+          if [ -z "$FRONTEND_DEPLOY_PATH" ]; then
+            echo "Frontend deploy path not found. Set FRONTEND_DEPLOY_PATH secret or clone Web_Frontend to /data/projects/Web_Frontend."
+            exit 1
+          fi
+
+          BACKEND_DEPLOY_PATH="${BACKEND_DEPLOY_PATH:-}"
+          if [ -z "$BACKEND_DEPLOY_PATH" ]; then
+            for candidate in /data/projects/Backend/deploy "$HOME/Backend/deploy"; do
+              if [ -d "$candidate" ]; then
+                BACKEND_DEPLOY_PATH="$candidate"
+                break
+              fi
+            done
+          fi
+          if [ -z "$BACKEND_DEPLOY_PATH" ]; then
+            echo "Backend deploy path not found. Set BACKEND_DEPLOY_PATH secret or clone Backend to /data/projects/Backend."
+            exit 1
+          fi
 
           cd "$FRONTEND_DEPLOY_PATH"
           git fetch origin main
