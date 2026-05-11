@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      SSH_HOST: ${{ secrets.ALIYUN_HOST }}
-      SSH_USER: ${{ secrets.ALIYUN_USER }}
-      SSH_PORT: ${{ secrets.ALIYUN_PORT }}
-      SSH_KEY: ${{ secrets.ALIYUN_SSH_KEY }}
+      SSH_HOST: ${{ secrets.ECS_HOST || secrets.ALIYUN_HOST }}
+      SSH_USER: ${{ secrets.ECS_USER || secrets.ALIYUN_USER }}
+      SSH_PORT: ${{ secrets.ECS_PORT || secrets.ALIYUN_PORT }}
+      SSH_KEY: ${{ secrets.ECS_SSH_KEY || secrets.ALIYUN_SSH_KEY }}
       FRONTEND_DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
       BACKEND_DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH }}
 
