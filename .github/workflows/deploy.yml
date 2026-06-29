@@ -43,18 +43,24 @@ jobs:
 
       - name: Upload frontend source
         run: |
-          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+          archive_path="$(mktemp)"
+          git archive --format=tar.gz -o "$archive_path" HEAD
+          scp -i ~/.ssh/deploy_key -P "${SSH_PORT:-22}" "$archive_path" "$SSH_USER@$SSH_HOST:/tmp/web_frontend_source.tar.gz"
+          rm -f "$archive_path"
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
             "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -s" <<'REMOTE'
           set -eu
 
           FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
           FRONTEND_PARENT="$(dirname "$FRONTEND_DEPLOY_PATH")"
           FRONTEND_TMP="${FRONTEND_DEPLOY_PATH}.tmp.$$"
+          FRONTEND_ARCHIVE="/tmp/web_frontend_source.tar.gz"
 
           mkdir -p "$FRONTEND_PARENT"
           rm -rf "$FRONTEND_TMP"
           mkdir -p "$FRONTEND_TMP"
-          tar -xzf - -C "$FRONTEND_TMP"
+          tar -xzf "$FRONTEND_ARCHIVE" -C "$FRONTEND_TMP"
+          rm -f "$FRONTEND_ARCHIVE"
           rm -rf "$FRONTEND_DEPLOY_PATH"
           mv "$FRONTEND_TMP" "$FRONTEND_DEPLOY_PATH"
           REMOTE
