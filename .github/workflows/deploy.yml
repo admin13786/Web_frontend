@@ -43,17 +43,21 @@ jobs:
 
       - name: Upload frontend source
         run: |
-          tar \
-            --exclude='.git' \
-            --exclude='.env' \
-            --exclude='*.env' \
-            --exclude='dist' \
-            --exclude='build' \
-            --exclude='node_modules' \
-            --exclude='.pnpm-store' \
-            --exclude='coverage' \
-            -czf - . | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-              "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -c 'set -eu; FRONTEND_DEPLOY_PATH=\"\${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}\"; mkdir -p \"\$FRONTEND_DEPLOY_PATH\"; tar -xzf - -C \"\$FRONTEND_DEPLOY_PATH\"'"
+          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -s" <<'REMOTE'
+          set -eu
+
+          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
+          FRONTEND_PARENT="$(dirname "$FRONTEND_DEPLOY_PATH")"
+          FRONTEND_TMP="${FRONTEND_DEPLOY_PATH}.tmp.$$"
+
+          mkdir -p "$FRONTEND_PARENT"
+          rm -rf "$FRONTEND_TMP"
+          mkdir -p "$FRONTEND_TMP"
+          tar -xzf - -C "$FRONTEND_TMP"
+          rm -rf "$FRONTEND_DEPLOY_PATH"
+          mv "$FRONTEND_TMP" "$FRONTEND_DEPLOY_PATH"
+          REMOTE
 
       - name: Deploy frontend
         run: |
