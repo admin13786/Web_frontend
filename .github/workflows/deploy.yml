@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload frontend source
         run: |
-          git archive --format=tar.gz HEAD | timeout 60s ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+          git archive --format=tar.gz HEAD -- ':!public/channel-covers/*.png' | timeout 60s ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
             "set -eu; cat > /tmp/web_frontend_source.tar.gz"
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
             "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -s" <<'REMOTE'
