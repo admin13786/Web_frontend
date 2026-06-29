@@ -41,27 +41,10 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
-      - name: Sync frontend source
+      - name: Upload frontend source
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -s" <<'REMOTE'
-          set -eu
-
-          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
-          FRONTEND_PARENT="$(dirname "$FRONTEND_DEPLOY_PATH")"
-          FRONTEND_REPO_URL="https://github.com/admin13786/Web_frontend.git"
-
-          mkdir -p "$FRONTEND_PARENT"
-          if [ -d "$FRONTEND_DEPLOY_PATH/.git" ]; then
-            git -C "$FRONTEND_DEPLOY_PATH" remote set-url origin "$FRONTEND_REPO_URL"
-            git -C "$FRONTEND_DEPLOY_PATH" fetch --depth=1 origin main
-            git -C "$FRONTEND_DEPLOY_PATH" reset --hard origin/main
-            git -C "$FRONTEND_DEPLOY_PATH" clean -fdx
-          else
-            rm -rf "$FRONTEND_DEPLOY_PATH"
-            git clone --depth=1 --branch main "$FRONTEND_REPO_URL" "$FRONTEND_DEPLOY_PATH"
-          fi
-          REMOTE
+          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "set -eu; FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}'; FRONTEND_PARENT=\$(dirname \"\$FRONTEND_DEPLOY_PATH\"); FRONTEND_TMP=\"\$FRONTEND_DEPLOY_PATH.tmp.\$\$\"; FRONTEND_OLD=\"\$FRONTEND_DEPLOY_PATH.old.\$(date +%s)\"; mkdir -p \"\$FRONTEND_PARENT\"; rm -rf \"\$FRONTEND_TMP\"; mkdir -p \"\$FRONTEND_TMP\"; tar -xzf - -C \"\$FRONTEND_TMP\"; if [ -e \"\$FRONTEND_DEPLOY_PATH\" ]; then mv \"\$FRONTEND_DEPLOY_PATH\" \"\$FRONTEND_OLD\"; fi; mv \"\$FRONTEND_TMP\" \"\$FRONTEND_DEPLOY_PATH\"; if [ -n \"\${FRONTEND_OLD:-}\" ] && [ -e \"\$FRONTEND_OLD\" ]; then nohup sh -c 'rm -rf \"\$1\"' sh \"\$FRONTEND_OLD\" >/dev/null 2>&1 & fi"
 
       - name: Deploy frontend
         run: |
