@@ -43,8 +43,31 @@ jobs:
 
       - name: Upload frontend source
         run: |
-          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "set -eu; FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}'; FRONTEND_PARENT=\$(dirname \"\$FRONTEND_DEPLOY_PATH\"); FRONTEND_TMP=\"\$FRONTEND_DEPLOY_PATH.tmp.\$\$\"; FRONTEND_OLD=\"\$FRONTEND_DEPLOY_PATH.old.\$(date +%s)\"; mkdir -p \"\$FRONTEND_PARENT\"; rm -rf \"\$FRONTEND_TMP\"; mkdir -p \"\$FRONTEND_TMP\"; tar -xzf - -C \"\$FRONTEND_TMP\"; if [ -e \"\$FRONTEND_DEPLOY_PATH\" ]; then mv \"\$FRONTEND_DEPLOY_PATH\" \"\$FRONTEND_OLD\"; fi; mv \"\$FRONTEND_TMP\" \"\$FRONTEND_DEPLOY_PATH\"; if [ -n \"\${FRONTEND_OLD:-}\" ] && [ -e \"\$FRONTEND_OLD\" ]; then nohup sh -c 'rm -rf \"\$1\"' sh \"\$FRONTEND_OLD\" >/dev/null 2>&1 & fi"
+          git archive --format=tar.gz HEAD | timeout 60s ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "set -eu; cat > /tmp/web_frontend_source.tar.gz"
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -s" <<'REMOTE'
+          set -eu
+
+          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
+          FRONTEND_PARENT="$(dirname "$FRONTEND_DEPLOY_PATH")"
+          FRONTEND_TMP="${FRONTEND_DEPLOY_PATH}.tmp.$$"
+          FRONTEND_OLD="${FRONTEND_DEPLOY_PATH}.old.$(date +%s)"
+          FRONTEND_ARCHIVE="/tmp/web_frontend_source.tar.gz"
+
+          mkdir -p "$FRONTEND_PARENT"
+          rm -rf "$FRONTEND_TMP"
+          mkdir -p "$FRONTEND_TMP"
+          tar -xzf "$FRONTEND_ARCHIVE" -C "$FRONTEND_TMP"
+          rm -f "$FRONTEND_ARCHIVE"
+          if [ -e "$FRONTEND_DEPLOY_PATH" ]; then
+            mv "$FRONTEND_DEPLOY_PATH" "$FRONTEND_OLD"
+          fi
+          mv "$FRONTEND_TMP" "$FRONTEND_DEPLOY_PATH"
+          if [ -e "$FRONTEND_OLD" ]; then
+            nohup rm -rf "$FRONTEND_OLD" >/dev/null 2>&1 &
+          fi
+          REMOTE
 
       - name: Deploy frontend
         run: |
