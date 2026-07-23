@@ -42,29 +42,35 @@ jobs:
           ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload frontend source
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          archive="frontend-source-${GITHUB_RUN_ID}.tar.gz"
-          remote_archive="/tmp/${archive}"
-
-          git archive --format=tar.gz -o "$archive" HEAD
-          scp -i ~/.ssh/deploy_key -P "${SSH_PORT:-22}" \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=4 \
-            "$archive" "$SSH_USER@$SSH_HOST:$remote_archive"
-
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' REMOTE_ARCHIVE='${remote_archive}' sh -s" <<'REMOTE'
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' GH_REPOSITORY='${GITHUB_REPOSITORY}' GH_SHA='${GITHUB_SHA}' GH_TOKEN='${GH_TOKEN}' sh -s" <<'REMOTE'
           set -eu
 
           FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
-          REMOTE_ARCHIVE="${REMOTE_ARCHIVE:?missing archive path}"
+          GH_REPOSITORY="${GH_REPOSITORY:?missing repository}"
+          GH_SHA="${GH_SHA:?missing sha}"
+          GH_TOKEN="${GH_TOKEN:?missing GitHub token}"
 
           case "$FRONTEND_DEPLOY_PATH" in
             /data/projects/Web_Frontend|/data/projects/Web_Frontend/*) ;;
             *) echo "Refusing to replace unexpected frontend path: $FRONTEND_DEPLOY_PATH" >&2; exit 1 ;;
           esac
+
+          remote_archive="/tmp/frontend-source-${GH_SHA}.tar.gz"
+          curl -fsSL \
+            --connect-timeout 15 \
+            --max-time 300 \
+            --retry 5 \
+            --retry-delay 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GH_REPOSITORY}/tarball/${GH_SHA}" \
+            -o "$remote_archive"
 
           mkdir -p "$FRONTEND_DEPLOY_PATH"
           rm -rf \
@@ -85,8 +91,8 @@ jobs:
             "$FRONTEND_DEPLOY_PATH/pnpm-lock.yaml" \
             "$FRONTEND_DEPLOY_PATH/README.md" \
             "$FRONTEND_DEPLOY_PATH/vite.config.js"
-          tar -xzf "$REMOTE_ARCHIVE" -C "$FRONTEND_DEPLOY_PATH"
-          rm -f "$REMOTE_ARCHIVE"
+          tar -xzf "$remote_archive" --strip-components=1 -C "$FRONTEND_DEPLOY_PATH"
+          rm -f "$remote_archive"
           REMOTE
 
       - name: Deploy frontend
