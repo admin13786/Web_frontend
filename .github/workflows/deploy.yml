@@ -58,7 +58,7 @@ jobs:
       - name: Deploy frontend
         run: |
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' FRONTEND_VITE_OPENMAIC_BASE_URL_OVERRIDE='http://${SSH_HOST}:3000' FRONTEND_VITE_OPENMAIC_APP_URL_OVERRIDE='http://${SSH_HOST}:3000' bash -s" <<'REMOTE'
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' FRONTEND_VITE_OPENMAIC_BASE_URL_OVERRIDE='/openmaic' FRONTEND_VITE_OPENMAIC_APP_URL_OVERRIDE='/openmaic' bash -s" <<'REMOTE'
           set -euo pipefail
 
           FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
