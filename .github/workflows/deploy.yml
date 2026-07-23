@@ -43,17 +43,37 @@ jobs:
 
       - name: Upload frontend source
         run: |
-          tar \
-            --exclude='.git' \
-            --exclude='.env' \
-            --exclude='*.env' \
-            --exclude='dist' \
-            --exclude='build' \
-            --exclude='node_modules' \
-            --exclude='.pnpm-store' \
-            --exclude='coverage' \
-            -czf - . | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-              "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' sh -c 'set -eu; FRONTEND_DEPLOY_PATH=\"\${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}\"; mkdir -p \"\$FRONTEND_DEPLOY_PATH\"; tar -xzf - -C \"\$FRONTEND_DEPLOY_PATH\"'"
+          set -euo pipefail
+
+          archive="frontend-source-${GITHUB_RUN_ID}.tar.gz"
+          remote_archive="/tmp/${archive}"
+
+          git archive --format=tar.gz -o "$archive" HEAD
+          scp -i ~/.ssh/deploy_key -P "${SSH_PORT:-22}" \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$archive" "$SSH_USER@$SSH_HOST:$remote_archive"
+
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' REMOTE_ARCHIVE='${remote_archive}' sh -s" <<'REMOTE'
+          set -eu
+
+          FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
+          REMOTE_ARCHIVE="${REMOTE_ARCHIVE:?missing archive path}"
+
+          case "$FRONTEND_DEPLOY_PATH" in
+            /data/projects/Web_Frontend|/data/projects/Web_Frontend/*) ;;
+            *) echo "Refusing to replace unexpected frontend path: $FRONTEND_DEPLOY_PATH" >&2; exit 1 ;;
+          esac
+
+          tmp_dir="${FRONTEND_DEPLOY_PATH}.incoming"
+          rm -rf "$tmp_dir"
+          mkdir -p "$tmp_dir"
+          tar -xzf "$REMOTE_ARCHIVE" -C "$tmp_dir"
+          rm -rf "$FRONTEND_DEPLOY_PATH"
+          mv "$tmp_dir" "$FRONTEND_DEPLOY_PATH"
+          rm -f "$REMOTE_ARCHIVE"
+          REMOTE
 
       - name: Deploy frontend
         run: |
