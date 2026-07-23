@@ -46,7 +46,7 @@ jobs:
             "$SSH_USER@$SSH_HOST" "echo 'SSH authentication check passed.'"
 
       - name: Upload frontend source
-        timeout-minutes: 8
+        timeout-minutes: 35
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -73,9 +73,11 @@ jobs:
           remote_archive="/tmp/frontend-source-${GH_SHA}.tar.gz"
           curl -fsSL \
             --connect-timeout 15 \
-            --max-time 300 \
-            --retry 5 \
+            --max-time 1800 \
+            --retry 3 \
             --retry-delay 3 \
+            --speed-limit 1024 \
+            --speed-time 120 \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GH_REPOSITORY}/tarball/${GH_SHA}" \
