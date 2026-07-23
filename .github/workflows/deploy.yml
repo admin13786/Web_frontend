@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      SSH_HOST: ${{ secrets.SERVER_HOST || secrets.ECS_HOST || secrets.ALIYUN_HOST }}
-      SSH_USER: ${{ secrets.SERVER_USER || secrets.ECS_USER || secrets.ALIYUN_USER }}
-      SSH_PORT: ${{ secrets.SERVER_PORT || secrets.ECS_PORT || secrets.ALIYUN_PORT }}
-      SSH_KEY: ${{ secrets.SERVER_PRIVATE_KEY || secrets.ECS_SSH_KEY || secrets.ALIYUN_SSH_KEY }}
-      FRONTEND_DEPLOY_PATH: ${{ secrets.FRONTEND_DEPLOY_PATH }}
-      BACKEND_DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH }}
+      SSH_HOST: ${{ secrets.SERVER_HOST }}
+      SSH_USER: ${{ secrets.SERVER_USER }}
+      SSH_PORT: "22"
+      SSH_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
+      FRONTEND_DEPLOY_PATH: /data/projects/Web_Frontend
+      BACKEND_DEPLOY_PATH: /data/projects/Backend/deploy
 
     steps:
       - name: Checkout
@@ -58,12 +58,30 @@ jobs:
       - name: Deploy frontend
         run: |
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
-            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' bash -s" <<'REMOTE'
+            "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' FRONTEND_VITE_OPENMAIC_BASE_URL_OVERRIDE='http://${SSH_HOST}:3000' FRONTEND_VITE_OPENMAIC_APP_URL_OVERRIDE='http://${SSH_HOST}:3000' bash -s" <<'REMOTE'
           set -euo pipefail
 
           FRONTEND_DEPLOY_PATH="${FRONTEND_DEPLOY_PATH:-/data/projects/Web_Frontend}"
           BACKEND_DEPLOY_PATH="${BACKEND_DEPLOY_PATH:-/data/projects/Backend/deploy}"
           cd "$BACKEND_DEPLOY_PATH"
-          WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" docker compose up -d --build --force-recreate web-frontend
+          if [ -f ./.env ]; then
+            set -a
+            source ./.env
+            set +a
+          fi
+          chmod +x ./up.sh
+          WEB_FRONTEND_CONTEXT="$FRONTEND_DEPLOY_PATH" ./up.sh --force-recreate web-frontend
           docker compose ps web-frontend
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${WEB_FRONTEND_PORT:-80}/" >/dev/null; then
+              echo "Frontend health check passed."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Frontend health check failed." >&2
+          docker compose logs --tail 80 web-frontend >&2 || true
+          exit 1
           REMOTE

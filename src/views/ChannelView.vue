@@ -28,6 +28,10 @@
           <span class="channel-switch__label">开发者 / 技术</span>
           <span class="channel-switch__hint">更偏工程、工具与能力变化</span>
         </button>
+        <RouterLink to="/news-chat" class="channel-switch__link">
+          <span class="channel-switch__label">新闻问答</span>
+          <span class="channel-switch__hint">直接向新闻库提问并看引用</span>
+        </RouterLink>
       </div>
     </section>
 
@@ -519,7 +523,8 @@ onMounted(fetchAll)
   gap: 10px;
 }
 
-.channel-switch__btn {
+.channel-switch__btn,
+.channel-switch__link {
   position: relative;
   z-index: 1;
   border: 1px solid var(--border-soft);
@@ -527,6 +532,7 @@ onMounted(fetchAll)
   background: var(--bg-elevated);
   color: var(--text-primary);
   text-align: left;
+  text-decoration: none;
   padding: 18px;
   cursor: pointer;
   transition:
@@ -538,10 +544,18 @@ onMounted(fetchAll)
 }
 
 .channel-switch__btn:hover,
-.channel-switch__btn:focus-visible {
+.channel-switch__btn:focus-visible,
+.channel-switch__link:hover,
+.channel-switch__link:focus-visible {
   transform: translateY(-1px);
   border-color: var(--border-strong);
   outline: none;
+}
+
+.channel-switch__link {
+  background:
+    radial-gradient(circle at top right, rgba(47, 108, 116, 0.16), transparent 40%),
+    var(--bg-elevated);
 }
 
 .channel-switch__btn--active {

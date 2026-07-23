@@ -46,6 +46,16 @@ const routes = [
         },
       },
       {
+        path: 'news-chat',
+        name: 'NewsChat',
+        component: () => import('../views/NewsChatView.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '新闻问答',
+          description: '基于已爬取新闻库进行意图识别、检索和引用式问答。',
+        },
+      },
+      {
         path: 'workshop',
         name: 'Workshop',
         component: () => import('../views/WorkshopView.vue'),
