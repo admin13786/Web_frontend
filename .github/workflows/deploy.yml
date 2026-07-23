@@ -40,14 +40,23 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "$SSH_USER@$SSH_HOST" "echo 'SSH authentication check passed.'"
 
       - name: Upload frontend source
+        timeout-minutes: 8
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
             "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' GH_REPOSITORY='${GITHUB_REPOSITORY}' GH_SHA='${GITHUB_SHA}' GH_TOKEN='${GH_TOKEN}' sh -s" <<'REMOTE'
           set -eu
 
@@ -96,8 +105,13 @@ jobs:
           REMOTE
 
       - name: Deploy frontend
+        timeout-minutes: 30
         run: |
           ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
             "FRONTEND_DEPLOY_PATH='${FRONTEND_DEPLOY_PATH}' BACKEND_DEPLOY_PATH='${BACKEND_DEPLOY_PATH}' FRONTEND_VITE_OPENMAIC_BASE_URL_OVERRIDE='/openmaic' FRONTEND_VITE_OPENMAIC_APP_URL_OVERRIDE='/openmaic' bash -s" <<'REMOTE'
           set -euo pipefail
 
