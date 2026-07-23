@@ -66,12 +66,26 @@ jobs:
             *) echo "Refusing to replace unexpected frontend path: $FRONTEND_DEPLOY_PATH" >&2; exit 1 ;;
           esac
 
-          tmp_dir="${FRONTEND_DEPLOY_PATH}.incoming"
-          rm -rf "$tmp_dir"
-          mkdir -p "$tmp_dir"
-          tar -xzf "$REMOTE_ARCHIVE" -C "$tmp_dir"
-          rm -rf "$FRONTEND_DEPLOY_PATH"
-          mv "$tmp_dir" "$FRONTEND_DEPLOY_PATH"
+          mkdir -p "$FRONTEND_DEPLOY_PATH"
+          rm -rf \
+            "$FRONTEND_DEPLOY_PATH/.github" \
+            "$FRONTEND_DEPLOY_PATH/docs" \
+            "$FRONTEND_DEPLOY_PATH/public" \
+            "$FRONTEND_DEPLOY_PATH/scripts" \
+            "$FRONTEND_DEPLOY_PATH/src"
+          rm -f \
+            "$FRONTEND_DEPLOY_PATH/.dockerignore" \
+            "$FRONTEND_DEPLOY_PATH/.env.example" \
+            "$FRONTEND_DEPLOY_PATH/.gitattributes" \
+            "$FRONTEND_DEPLOY_PATH/.gitignore" \
+            "$FRONTEND_DEPLOY_PATH/Dockerfile" \
+            "$FRONTEND_DEPLOY_PATH/index.html" \
+            "$FRONTEND_DEPLOY_PATH/nginx.conf" \
+            "$FRONTEND_DEPLOY_PATH/package.json" \
+            "$FRONTEND_DEPLOY_PATH/pnpm-lock.yaml" \
+            "$FRONTEND_DEPLOY_PATH/README.md" \
+            "$FRONTEND_DEPLOY_PATH/vite.config.js"
+          tar -xzf "$REMOTE_ARCHIVE" -C "$FRONTEND_DEPLOY_PATH"
           rm -f "$REMOTE_ARCHIVE"
           REMOTE
 
